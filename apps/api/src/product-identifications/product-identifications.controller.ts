@@ -1,5 +1,6 @@
 import { Body, Controller, Param, Patch, Post } from "@nestjs/common";
 import { ConfirmIdentificationDto } from "./dto/confirm-identification.dto";
+import { CreateImageIdentificationDto } from "./dto/create-image-identification.dto";
 import { CreateTextIdentificationDto } from "./dto/create-text-identification.dto";
 import { ProductIdentificationsService } from "./product-identifications.service";
 
@@ -12,9 +13,9 @@ export class ProductIdentificationsController {
     return this.productIdentificationsService.createFromText(dto);
   }
 
-  @Post("image/mock")
-  createFromMockImage() {
-    return this.productIdentificationsService.createFromMockImage();
+  @Post("image")
+  createFromImage(@Body() dto: CreateImageIdentificationDto) {
+    return this.productIdentificationsService.createFromImage(dto);
   }
 
   @Patch(":id/confirm")
@@ -22,4 +23,3 @@ export class ProductIdentificationsController {
     return this.productIdentificationsService.confirm(id, dto);
   }
 }
-

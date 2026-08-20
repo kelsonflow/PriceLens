@@ -13,9 +13,9 @@ Se for usado Firebase Auth ou Identity Platform, o cliente envia o ID token e a 
 ### Identificacao de produto
 
 - `POST /product-identifications/image`
-  - Recebe imagem.
-  - Guarda no Cloud Storage.
-  - Chama Vision API.
+  - Recebe imagem em base64.
+  - Chama Gemini para identificacao visual.
+  - Futuramente guarda a imagem no Cloud Storage.
   - Devolve identificacao preliminar.
 
 - `POST /product-identifications/text`
@@ -39,6 +39,9 @@ Se for usado Firebase Auth ou Identity Platform, o cliente envia o ID token e a 
 
 ### Historico, favoritos e alertas
 
+- `GET /user-data?type=favorite`
+- `POST /user-data`
+- `DELETE /user-data/:id`
 - `GET /searches`
 - `GET /searches/:id`
 - `DELETE /searches/:id`
@@ -76,4 +79,3 @@ Prioridade para o MVP:
 - Marketplaces com API oficial.
 
 Nao usar scraping que viole termos de servico. Quando nao houver API real configurada, usar `MockShoppingProvider` com dados claramente simulados.
-

@@ -36,7 +36,7 @@ Tambem podes usar Docker para instalar dependencias e compilar dentro do contain
 
 ```bash
 docker build -f apps/api/Dockerfile -t pricelens-api .
-docker build -f apps/web/Dockerfile -t pricelens-web .
+docker build -f apps/web/Dockerfile --build-arg NEXT_PUBLIC_API_BASE_URL=http://localhost:4000 -t pricelens-web .
 ```
 
 Aplicacoes:
@@ -47,11 +47,22 @@ Aplicacoes:
 
 ## Estado atual do MVP
 
-- Web app com fluxo de fotografia/upload simulado, confirmacao do produto, filtros e resultados.
+- Web app com scanner/upload/pesquisa por texto, confirmacao do produto, resultados, detalhes, favoritos, historico, alertas, perfil e painel admin.
 - Mobile app Expo com o mesmo fluxo principal em versao mobile-first.
-- API NestJS com healthcheck, identificacao por texto/mock, confirmacao e pesquisa de ofertas.
+- API NestJS com healthcheck, identificacao por texto/imagem via Gemini, confirmacao, pesquisa de ofertas e dados de utilizador em memoria para o MVP.
 - Pacote partilhado com normalizacao, validacao, deduplicacao e ordenacao de ofertas.
 - Prisma schema preparado para PostgreSQL em Google Cloud SQL.
+
+## Gemini
+
+Configura no backend:
+
+```bash
+GEMINI_API_KEY=...
+GEMINI_MODEL=gemini-2.5-flash
+```
+
+Sem `GEMINI_API_KEY`, a API usa dados de demonstracao para manter o MVP utilizavel.
 
 ## Principios do produto
 

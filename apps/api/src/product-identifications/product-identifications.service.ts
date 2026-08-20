@@ -1,35 +1,25 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
-import { mockIdentification, type ProductIdentification } from "@pricelens/shared";
+import { type ProductIdentification } from "@pricelens/shared";
 import { ConfirmIdentificationDto } from "./dto/confirm-identification.dto";
+import { CreateImageIdentificationDto } from "./dto/create-image-identification.dto";
 import { CreateTextIdentificationDto } from "./dto/create-text-identification.dto";
+import { GeminiIdentificationService } from "./gemini-identification.service";
 
 @Injectable()
 export class ProductIdentificationsService {
   private readonly identifications = new Map<string, ProductIdentification>();
 
-  createFromText(dto: CreateTextIdentificationDto): ProductIdentification {
-    const identification: ProductIdentification = {
-      ...mockIdentification,
-      id: `ident_${crypto.randomUUID()}`,
-      sourceType: "text",
-      name: dto.query,
-      confidence: 72,
-      visibleFeatures: [],
-      ocrText: undefined,
-      createdAt: new Date().toISOString()
-    };
+  constructor(private readonly geminiIdentificationService: GeminiIdentificationService) {}
 
+  async createFromText(dto: CreateTextIdentificationDto): Promise<ProductIdentification> {
+    const identification = await this.geminiIdentificationService.identifyFromText(dto.query, "text");
     this.identifications.set(identification.id, identification);
     return identification;
   }
 
-  createFromMockImage(): ProductIdentification {
-    const identification: ProductIdentification = {
-      ...mockIdentification,
-      id: `ident_${crypto.randomUUID()}`,
-      createdAt: new Date().toISOString()
-    };
-
+  async createFromImage(dto: CreateImageIdentificationDto): Promise<ProductIdentification> {
+    const imageBase64 = dto.imageBase64.includes(",") ? dto.imageBase64.split(",").at(-1) ?? dto.imageBase64 : dto.imageBase64;
+    const identification = await this.geminiIdentificationService.identifyFromImage(imageBase64, dto.mimeType);
     this.identifications.set(identification.id, identification);
     return identification;
   }
@@ -51,4 +41,3 @@ export class ProductIdentificationsService {
     return confirmed;
   }
 }
-

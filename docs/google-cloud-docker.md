@@ -66,9 +66,11 @@ gcloud run deploy pricelens-api \
 Web:
 
 ```bash
+API_URL="$(gcloud run services describe pricelens-api --region "$REGION" --format='value(status.url)')"
+
 gcloud builds submit \
   --config cloudbuild.web.yaml \
-  --substitutions _REGION="$REGION",_TAG="latest" \
+  --substitutions _REGION="$REGION",_TAG="latest",_API_BASE_URL="$API_URL" \
   .
 
 gcloud run deploy pricelens-web \
@@ -89,6 +91,8 @@ No Cloud Run, configura pelo menos:
 - `GOOGLE_CLOUD_PROJECT_ID`
 - `GOOGLE_CLOUD_REGION`
 - `GCS_PRODUCT_IMAGES_BUCKET`
+- `GEMINI_API_KEY`
+- `GEMINI_MODEL`
 - `REDIS_URL`, quando Memorystore estiver ligado
 - `SENTRY_DSN`, quando Sentry estiver ligado
 

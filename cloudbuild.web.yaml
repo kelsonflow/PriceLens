@@ -6,10 +6,12 @@ steps:
       - apps/web/Dockerfile
       - -t
       - ${_REGION}-docker.pkg.dev/$PROJECT_ID/pricelens/pricelens-web:${_TAG}
+      - --build-arg
+      - NEXT_PUBLIC_API_BASE_URL=${_API_BASE_URL}
       - .
 images:
   - ${_REGION}-docker.pkg.dev/$PROJECT_ID/pricelens/pricelens-web:${_TAG}
 substitutions:
   _REGION: europe-west1
   _TAG: latest
-
+  _API_BASE_URL: http://localhost:4000
