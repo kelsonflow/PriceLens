@@ -1,0 +1,162 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id               String   @id @default(uuid())
+  email            String   @unique
+  displayName      String?
+  locale           String   @default("pt-PT")
+  country          String   @default("PT")
+  currency         String   @default("EUR")
+  subscriptionTier String   @default("free")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  searches    ProductSearch[]
+  alerts      PriceAlert[]
+  favorites   Favorite[]
+}
+
+model ProductSearch {
+  id              String   @id @default(uuid())
+  userId          String?
+  sourceType      String
+  queryText       String?
+  imageObjectPath String?
+  status          String   @default("created")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user           User?                   @relation(fields: [userId], references: [id])
+  identification ProductIdentification?
+  offers         Offer[]
+
+  @@index([userId, createdAt])
+}
+
+model ProductIdentification {
+  id                    String   @id @default(uuid())
+  searchId              String   @unique
+  name                  String
+  brand                 String?
+  model                 String?
+  category              String?
+  color                 String?
+  visibleFeatures       Json
+  barcode               String?
+  isbn                  String?
+  ean                   String?
+  upc                   String?
+  ocrText               String?
+  confidence            Int
+  userCorrectedName     String?
+  userCorrectedModel    String?
+  userCorrectedCategory String?
+  createdAt             DateTime @default(now())
+
+  search ProductSearch @relation(fields: [searchId], references: [id])
+  alerts PriceAlert[]
+}
+
+model Store {
+  id                   String   @id @default(uuid())
+  name                 String
+  domain               String   @unique
+  country              String
+  isApproved           Boolean  @default(false)
+  isMarketplace        Boolean  @default(false)
+  trustScore           Int      @default(50)
+  returnPolicyUrl      String?
+  paymentSecurityNotes String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  offers Offer[]
+}
+
+model Offer {
+  id                    String   @id @default(uuid())
+  searchId              String
+  storeId               String?
+  provider              String
+  sellerName            String?
+  title                 String
+  brand                 String?
+  model                 String?
+  variant               String?
+  condition             String
+  productUrl            String
+  imageUrl              String?
+  currency              String
+  itemPrice             Decimal
+  shippingPrice         Decimal
+  estimatedTax          Decimal?
+  totalPrice            Decimal
+  availability          String
+  estimatedDelivery     String?
+  sellerRating          Decimal?
+  storeTrustScore       Int
+  matchConfidence       Int
+  isSponsored           Boolean  @default(false)
+  sponsoredDisclosure   String?
+  lastUpdatedAt         DateTime
+  createdAt             DateTime @default(now())
+
+  search            ProductSearch            @relation(fields: [searchId], references: [id])
+  store             Store?                   @relation(fields: [storeId], references: [id])
+  favorites         Favorite[]
+  suspiciousReviews SuspiciousResultReview[]
+
+  @@index([searchId, totalPrice])
+  @@index([provider, storeId])
+}
+
+model Favorite {
+  id        String   @id @default(uuid())
+  userId    String
+  offerId   String
+  createdAt DateTime @default(now())
+
+  user  User  @relation(fields: [userId], references: [id])
+  offer Offer @relation(fields: [offerId], references: [id])
+
+  @@unique([userId, offerId])
+}
+
+model PriceAlert {
+  id                      String    @id @default(uuid())
+  userId                  String
+  productIdentificationId String
+  targetPrice             Decimal
+  currency                String
+  condition               String?
+  isActive                Boolean   @default(true)
+  lastCheckedAt           DateTime?
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+
+  user                  User                  @relation(fields: [userId], references: [id])
+  productIdentification ProductIdentification @relation(fields: [productIdentificationId], references: [id])
+
+  @@index([userId, isActive])
+}
+
+model SuspiciousResultReview {
+  id               String   @id @default(uuid())
+  offerId          String
+  reason           String
+  status           String   @default("pending")
+  reviewedByUserId String?
+  reviewNotes      String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  offer Offer @relation(fields: [offerId], references: [id])
+}
+

@@ -1,0 +1,20 @@
+{
+  "expo": {
+    "name": "PriceLens",
+    "slug": "pricelens",
+    "scheme": "pricelens",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.pricelens.app"
+    },
+    "android": {
+      "package": "com.pricelens.app"
+    },
+    "plugins": ["expo-router", "expo-image-picker"]
+  }
+}
+
