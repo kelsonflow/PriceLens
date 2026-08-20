@@ -37,6 +37,17 @@ gcloud artifacts repositories create pricelens \
   --description="PriceLens containers"
 ```
 
+Ativa tambem as APIs necessarias:
+
+```bash
+gcloud services enable \
+  cloudbuild.googleapis.com \
+  run.googleapis.com \
+  artifactregistry.googleapis.com \
+  vision.googleapis.com \
+  secretmanager.googleapis.com
+```
+
 ## Build e deploy com Cloud Build
 
 Define primeiro as variaveis:
@@ -93,10 +104,17 @@ No Cloud Run, configura pelo menos:
 - `GCS_PRODUCT_IMAGES_BUCKET`
 - `GEMINI_API_KEY`
 - `GEMINI_MODEL`
+- `GOOGLE_VISION_ENABLED`
 - `REDIS_URL`, quando Memorystore estiver ligado
 - `SENTRY_DSN`, quando Sentry estiver ligado
 
 Usa Secret Manager para valores sensiveis, como `DATABASE_URL`, chaves de providers, Stripe e credenciais de servicos externos.
+
+Para Google Cloud Vision no Cloud Run, ativa `vision.googleapis.com` e deixa o servico correr com uma service account do projeto. Para testes locais fora do Cloud Shell, autentica Application Default Credentials:
+
+```bash
+gcloud auth application-default login
+```
 
 ## Notas importantes
 

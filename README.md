@@ -53,16 +53,17 @@ Aplicacoes:
 - Pacote partilhado com normalizacao, validacao, deduplicacao e ordenacao de ofertas.
 - Prisma schema preparado para PostgreSQL em Google Cloud SQL.
 
-## Gemini
+## Gemini e Google Vision
 
 Configura no backend:
 
 ```bash
 GEMINI_API_KEY=...
 GEMINI_MODEL=gemini-2.5-flash
+GOOGLE_VISION_ENABLED=true
 ```
 
-Sem `GEMINI_API_KEY`, a API usa dados de demonstracao para manter o MVP utilizavel.
+Na identificacao por imagem, a API usa Google Cloud Vision para OCR, logos, labels e objetos, e passa esses sinais para o Gemini identificar melhor o produto. Sem credenciais ou sem `GEMINI_API_KEY`, a API usa fallback de demonstracao para manter o MVP utilizavel.
 
 ## Principios do produto
 

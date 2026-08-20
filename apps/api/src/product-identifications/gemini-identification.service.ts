@@ -1,6 +1,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { GoogleGenAI } from "@google/genai";
 import { mockIdentification, type ProductIdentification, type SearchSourceType } from "@pricelens/shared";
+import { GoogleVisionService, type GoogleVisionSignals } from "./google-vision.service";
 
 interface GeminiProductResult {
   name?: string;
@@ -18,6 +19,8 @@ interface GeminiProductResult {
 export class GeminiIdentificationService {
   private readonly logger = new Logger(GeminiIdentificationService.name);
 
+  constructor(private readonly googleVisionService: GoogleVisionService) {}
+
   async identifyFromText(query: string, sourceType: SearchSourceType): Promise<ProductIdentification> {
     const prompt = this.buildPrompt(`Pesquisa textual do utilizador: ${query}`);
     const result = await this.generateJson([{ text: prompt }]);
@@ -25,12 +28,13 @@ export class GeminiIdentificationService {
   }
 
   async identifyFromImage(imageBase64: string, mimeType: string): Promise<ProductIdentification> {
-    const prompt = this.buildPrompt("Identifica o produto principal nesta imagem.");
+    const visionSignals = await this.googleVisionService.analyzeImage(imageBase64);
+    const prompt = this.buildPrompt(["Identifica o produto principal nesta imagem.", this.formatVisionSignals(visionSignals)].join("\n"));
     const result = await this.generateJson([
       { inlineData: { mimeType, data: imageBase64 } },
       { text: prompt }
     ]);
-    return this.toIdentification(result, "image");
+    return this.toIdentification(this.mergeVisionSignals(result, visionSignals), "image");
   }
 
   private async generateJson(contents: Array<{ text: string } | { inlineData: { mimeType: string; data: string } }>): Promise<GeminiProductResult> {
@@ -74,6 +78,29 @@ export class GeminiIdentificationService {
     ].join("\n");
   }
 
+  private formatVisionSignals(signals: GoogleVisionSignals): string {
+    return [
+      "Sinais extraidos pelo Google Cloud Vision:",
+      `Labels: ${signals.labels.join(", ") || "nenhum"}`,
+      `Logos: ${signals.logos.join(", ") || "nenhum"}`,
+      `Objetos: ${signals.objects.join(", ") || "nenhum"}`,
+      `Texto/OCR: ${signals.text || "nenhum"}`
+    ].join("\n");
+  }
+
+  private mergeVisionSignals(result: GeminiProductResult, signals: GoogleVisionSignals): GeminiProductResult {
+    return {
+      ...result,
+      brand: result.brand || signals.logos[0],
+      ocrText: result.ocrText || signals.text,
+      visibleFeatures: [
+        ...(result.visibleFeatures ?? []),
+        ...signals.labels,
+        ...signals.objects
+      ].filter((value, index, values) => value && values.indexOf(value) === index).slice(0, 8)
+    };
+  }
+
   private parseJson(text: string): GeminiProductResult {
     try {
       return JSON.parse(text) as GeminiProductResult;
@@ -84,19 +111,21 @@ export class GeminiIdentificationService {
   }
 
   private toIdentification(result: GeminiProductResult, sourceType: SearchSourceType, fallbackName = mockIdentification.name): ProductIdentification {
+    const useMockVisualFallback = sourceType !== "text";
     return {
       ...mockIdentification,
       id: `ident_${crypto.randomUUID()}`,
       sourceType,
       name: result.name?.trim() || fallbackName,
-      brand: result.brand?.trim() || mockIdentification.brand,
-      model: result.model?.trim() || mockIdentification.model,
-      category: result.category?.trim() || mockIdentification.category,
-      color: result.color?.trim() || mockIdentification.color,
-      visibleFeatures: Array.isArray(result.visibleFeatures) && result.visibleFeatures.length > 0 ? result.visibleFeatures.slice(0, 8) : mockIdentification.visibleFeatures,
+      brand: result.brand?.trim() || (useMockVisualFallback ? mockIdentification.brand : undefined),
+      model: result.model?.trim() || (useMockVisualFallback ? mockIdentification.model : undefined),
+      category: result.category?.trim() || (useMockVisualFallback ? mockIdentification.category : "Pesquisa textual"),
+      color: result.color?.trim() || (useMockVisualFallback ? mockIdentification.color : undefined),
+      visibleFeatures: Array.isArray(result.visibleFeatures) && result.visibleFeatures.length > 0 ? result.visibleFeatures.slice(0, 8) : useMockVisualFallback ? mockIdentification.visibleFeatures : [],
       barcode: result.barcode?.trim() || undefined,
       ocrText: result.ocrText?.trim() || undefined,
-      confidence: clampConfidence(result.confidence ?? mockIdentification.confidence),
+      confidence: clampConfidence(result.confidence ?? (useMockVisualFallback ? mockIdentification.confidence : 60)),
+      imageUrl: useMockVisualFallback ? mockIdentification.imageUrl : undefined,
       createdAt: new Date().toISOString()
     };
   }
@@ -105,4 +134,3 @@ export class GeminiIdentificationService {
 function clampConfidence(value: number): number {
   return Math.min(100, Math.max(0, Math.round(Number.isFinite(value) ? value : 0)));
 }
-

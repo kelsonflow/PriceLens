@@ -14,7 +14,8 @@ Se for usado Firebase Auth ou Identity Platform, o cliente envia o ID token e a 
 
 - `POST /product-identifications/image`
   - Recebe imagem em base64.
-  - Chama Gemini para identificacao visual.
+  - Chama Google Cloud Vision para OCR, logos, labels e objetos.
+  - Chama Gemini com a imagem e os sinais do Vision para identificacao visual.
   - Futuramente guarda a imagem no Cloud Storage.
   - Devolve identificacao preliminar.
 
