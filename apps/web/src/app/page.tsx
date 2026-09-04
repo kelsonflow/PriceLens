@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertCircle, Barcode, Bell, Bookmark, Camera, CheckCircle2, ExternalLink, Heart, History, ImagePlus, Search, ShieldCheck, SlidersHorizontal, Sparkles, Trash2, User } from "lucide-react";
+import { AlertCircle, ArrowRight, Barcode, Bell, Bookmark, Camera, Check, CheckCircle2, ChevronRight, ExternalLink, Heart, History, ImagePlus, Lock, Menu, Search, ShieldCheck, SlidersHorizontal, Sparkles, Trash2, User, X, Zap } from "lucide-react";
 import Image from "next/image";
 import { ChangeEvent, FormEvent, useMemo, useRef, useState } from "react";
 import { getOfferBadge, mockIdentification, type NormalizedOffer, type OfferCondition, type ProductIdentification } from "@pricelens/shared";
@@ -26,6 +26,7 @@ export default function HomePage() {
   const [notice, setNotice] = useState("Pronto para analisar.");
   const [savedItems, setSavedItems] = useState<SavedItem[]>([]);
   const [profile, setProfile] = useState({ country: "PT", currency: "EUR", language: "pt-PT", premium: false });
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   const rankedOffers = useMemo(
     () => offers.filter((offer) => condition === "any" || offer.condition === condition).filter((offer) => !freeShipping || offer.shippingPrice === 0).filter((offer) => offer.totalPrice <= maxPrice),
@@ -107,34 +108,43 @@ export default function HomePage() {
       <section className="hero-band">
         <nav className="topbar" aria-label="Navegacao principal">
           <button className="brand-mark nav-reset" onClick={() => setScreen("scanner")}><span className="brand-icon"><Search size={18} /></span><span>PriceLens</span></button>
-          <div className="top-actions">
-            <NavButton label="Historico" active={screen === "history"} onClick={() => setScreen("history")}><History size={18} /></NavButton>
-            <NavButton label="Favoritos" active={screen === "favorites"} onClick={() => setScreen("favorites")}><Heart size={18} /></NavButton>
-            <NavButton label="Alertas" active={screen === "alerts"} onClick={() => setScreen("alerts")}><Bell size={18} /></NavButton>
-            <NavButton label="Perfil" active={screen === "profile"} onClick={() => setScreen("profile")}><User size={18} /></NavButton>
+          <div className={`top-actions ${mobileNavOpen ? "is-open" : ""}`}>
+            <NavButton label="Historico" active={screen === "history"} onClick={() => { setScreen("history"); setMobileNavOpen(false); }}><History size={18} /></NavButton>
+            <NavButton label="Favoritos" active={screen === "favorites"} onClick={() => { setScreen("favorites"); setMobileNavOpen(false); }}><Heart size={18} /></NavButton>
+            <NavButton label="Alertas" active={screen === "alerts"} onClick={() => { setScreen("alerts"); setMobileNavOpen(false); }}><Bell size={18} /></NavButton>
+            <NavButton label="Perfil" active={screen === "profile"} onClick={() => { setScreen("profile"); setMobileNavOpen(false); }}><User size={18} /></NavButton>
           </div>
+          <button className="menu-button" onClick={() => setMobileNavOpen((open) => !open)} aria-label={mobileNavOpen ? "Fechar menu" : "Abrir menu"} aria-expanded={mobileNavOpen}>{mobileNavOpen ? <X size={20} /> : <Menu size={20} />}</button>
         </nav>
 
         {screen === "scanner" && (
-          <div className="home-grid">
-            <div className="home-copy">
-              <p className="eyebrow">Gemini Vision + comparacao de precos</p>
-              <h1>Encontra o melhor preco com uma fotografia</h1>
-              <p className="subtitle">Fotografa um produto, escolhe uma imagem ou pesquisa pelo nome. A API identifica o produto e devolve ofertas normalizadas.</p>
-              <div className="primary-actions">
-                <button className="primary-button" onClick={() => fileInputRef.current?.click()}><Camera size={20} />Tirar fotografia</button>
-                <button className="secondary-button" onClick={() => fileInputRef.current?.click()}><ImagePlus size={20} />Escolher da galeria</button>
+          <>
+            <div className="home-grid">
+              <div className="home-copy">
+                <p className="eyebrow">Gemini + Google Vision para compras mais claras</p>
+                <h1>Compara preços com a confiança de uma análise visual.</h1>
+                <p className="subtitle">Fotografa um produto, confirma a identificação e recebe ofertas organizadas por preço total, confiança da loja e compatibilidade do produto.</p>
+                <div className="primary-actions">
+                  <button className="primary-button" onClick={() => fileInputRef.current?.click()}><Camera size={20} />Analisar produto<ArrowRight size={18} /></button>
+                  <button className="secondary-button" onClick={() => fileInputRef.current?.click()}><ImagePlus size={20} />Usar imagem</button>
+                </div>
+                <input ref={fileInputRef} className="hidden-input" type="file" accept="image/png,image/jpeg,image/webp" capture="environment" onChange={identifyImage} />
+                <form className="search-box" onSubmit={identifyText}>
+                  <Search size={20} />
+                  <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Nome, modelo ou categoria" aria-label="Pesquisar produto" />
+                  <button type="submit">Comparar</button>
+                </form>
+                <StatusPill loading={loading} text={notice} />
+                <div className="value-strip" aria-label="Beneficios principais">
+                  <span><Check size={16} />Preco total com envio</span>
+                  <span><ShieldCheck size={16} />Sinal de confianca</span>
+                  <span><Zap size={16} />Fluxo em poucos passos</span>
+                </div>
               </div>
-              <input ref={fileInputRef} className="hidden-input" type="file" accept="image/png,image/jpeg,image/webp" capture="environment" onChange={identifyImage} />
-              <form className="search-box" onSubmit={identifyText}>
-                <Search size={20} />
-                <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Ou pesquisa pelo nome do produto" />
-                <button type="submit">Pesquisar</button>
-              </form>
-              <StatusPill loading={loading} text={notice} />
+              <ScannerPreview previewUrl={previewUrl} confidence={identification.confidence} onPickImage={() => fileInputRef.current?.click()} onNavigate={setScreen} />
             </div>
-            <ScannerPreview previewUrl={previewUrl} confidence={identification.confidence} onPickImage={() => fileInputRef.current?.click()} onNavigate={setScreen} />
-          </div>
+            <LandingSections onStart={() => fileInputRef.current?.click()} />
+          </>
         )}
 
         {screen === "confirm" && (
@@ -205,6 +215,59 @@ function ScannerPreview({ previewUrl, confidence, onPickImage, onNavigate }: { p
   );
 }
 
+function LandingSections({ onStart }: { onStart: () => void }) {
+  return (
+    <div className="landing-sections">
+      <section className="section-grid" aria-label="Como funciona">
+        {[
+          { icon: Camera, title: "Captura", text: "Usa fotografia, galeria ou pesquisa manual para iniciar a análise." },
+          { icon: Sparkles, title: "Confirma", text: "Revê nome, marca, modelo e sinais visíveis antes de pesquisar." },
+          { icon: ShieldCheck, title: "Decide", text: "Compara preço total, entrega, confiança da loja e match do produto." }
+        ].map((item) => <article className="feature-card" key={item.title}><item.icon size={22} /><h2>{item.title}</h2><p>{item.text}</p></article>)}
+      </section>
+
+      <section className="conversion-panel">
+        <div>
+          <p className="eyebrow">Valor para o cliente</p>
+          <h2>Menos abas abertas. Mais segurança antes de comprar.</h2>
+          <p>O PriceLens transforma uma fotografia numa lista de ofertas comparáveis, com filtros simples e sinais claros para reduzir escolhas confusas.</p>
+        </div>
+        <button className="primary-button" onClick={onStart}><Camera size={20} />Começar análise</button>
+      </section>
+
+      <section className="pricing-section" aria-label="Planos">
+        <div>
+          <p className="eyebrow">Planos</p>
+          <h2>Começa simples e evolui quando precisares.</h2>
+        </div>
+        <div className="pricing-grid">
+          <article className="plan-card">
+            <span className="badge">Starter</span>
+            <h3>Comparação essencial</h3>
+            <p>Pesquisa por texto, análise visual assistida e histórico básico.</p>
+            <strong>A definir</strong>
+          </article>
+          <article className="plan-card plan-card-featured">
+            <span className="badge">Premium</span>
+            <h3>Alertas e decisões rápidas</h3>
+            <p>Alertas de preço, favoritos e preferências para compras recorrentes.</p>
+            <strong>A definir</strong>
+          </article>
+        </div>
+      </section>
+
+      <section className="faq-section" aria-label="Perguntas frequentes">
+        {["Os preços são garantidos?", "A imagem é necessária?", "Que dados posso rever?"].map((question, index) => (
+          <details key={question} open={index === 0}>
+            <summary>{question}<ChevronRight size={18} /></summary>
+            <p>{index === 0 ? "Não. A app apresenta ofertas recolhidas pela API e recomenda confirmar sempre na loja antes da compra." : index === 1 ? "Não. Também podes pesquisar por nome, marca ou modelo quando não quiseres usar fotografia." : "Podes corrigir nome, marca, modelo, categoria, país, moeda e guardar favoritos, alertas e histórico."}</p>
+          </details>
+        ))}
+      </section>
+    </div>
+  );
+}
+
 function AnalysisCard({ loading, notice }: { loading: boolean; notice: string }) {
   return <div className="analysis-card"><div className="analysis-target"><span className="analysis-ring ring-one" /><span className="analysis-ring ring-two" /><span className="analysis-focus"><Barcode size={38} /></span><span className="analysis-line" /></div><h2>{loading ? "Identificando produto e buscando melhores precos..." : "Produto pronto para confirmacao"}</h2><div className="loading-dots" aria-hidden="true"><span /><span /><span /></div><div className="analysis-tip"><Sparkles size={16} />{notice}</div></div>;
 }
@@ -243,7 +306,7 @@ function StatusPill({ loading, text }: { loading: boolean; text: string }) {
 }
 
 function NavButton({ label, active, onClick, children }: { label: string; active: boolean; onClick: () => void; children: React.ReactNode }) {
-  return <button className={`icon-button ${active ? "is-active" : ""}`} aria-label={label} onClick={onClick}>{children}</button>;
+  return <button className={`nav-button ${active ? "is-active" : ""}`} aria-label={label} onClick={onClick}>{children}<span>{label}</span></button>;
 }
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
@@ -260,4 +323,3 @@ function readFileAsDataUrl(file: File): Promise<string> {
     reader.readAsDataURL(file);
   });
 }
-

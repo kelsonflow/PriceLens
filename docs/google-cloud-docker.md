@@ -45,6 +45,7 @@ gcloud services enable \
   run.googleapis.com \
   artifactregistry.googleapis.com \
   vision.googleapis.com \
+  aiplatform.googleapis.com \
   secretmanager.googleapis.com
 ```
 
@@ -100,17 +101,26 @@ No Cloud Run, configura pelo menos:
 - `API_BASE_URL`
 - `DATABASE_URL`
 - `GOOGLE_CLOUD_PROJECT_ID`
+- `GOOGLE_CLOUD_PROJECT`
 - `GOOGLE_CLOUD_REGION`
+- `GOOGLE_CLOUD_LOCATION`
 - `GCS_PRODUCT_IMAGES_BUCKET`
-- `GEMINI_API_KEY`
 - `GEMINI_MODEL`
 - `GOOGLE_VISION_ENABLED`
 - `REDIS_URL`, quando Memorystore estiver ligado
 - `SENTRY_DSN`, quando Sentry estiver ligado
 
-Usa Secret Manager para valores sensiveis, como `DATABASE_URL`, chaves de providers, Stripe e credenciais de servicos externos.
+Usa Secret Manager para valores sensiveis, como `DATABASE_URL`, chaves de providers, Stripe e credenciais de servicos externos. Se a organizacao bloquear chaves de API, deixa `GEMINI_API_KEY` vazio e usa Vertex AI com a service account do Cloud Run.
 
-Para Google Cloud Vision no Cloud Run, ativa `vision.googleapis.com` e deixa o servico correr com uma service account do projeto. Para testes locais fora do Cloud Shell, autentica Application Default Credentials:
+Para Gemini via Vertex AI no Cloud Run, ativa `aiplatform.googleapis.com`, atribui `roles/aiplatform.user` a service account do servico e configura:
+
+```bash
+GOOGLE_CLOUD_PROJECT=pricelens-506120
+GOOGLE_CLOUD_LOCATION=europe-west1
+GEMINI_MODEL=gemini-2.5-flash
+```
+
+Para Google Cloud Vision no Cloud Run, ativa `vision.googleapis.com` e deixa o servico correr com uma service account do projeto. Nao uses `roles/cloudvision.user`: esse role nao existe para este caso. Para testes locais fora do Cloud Shell, autentica Application Default Credentials:
 
 ```bash
 gcloud auth application-default login

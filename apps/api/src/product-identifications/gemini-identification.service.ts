@@ -39,10 +39,16 @@ export class GeminiIdentificationService {
 
   private async generateJson(contents: Array<{ text: string } | { inlineData: { mimeType: string; data: string } }>): Promise<GeminiProductResult> {
     const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) return {};
+    const project = process.env.GOOGLE_CLOUD_PROJECT ?? process.env.GOOGLE_CLOUD_PROJECT_ID;
+    const location = process.env.GOOGLE_CLOUD_LOCATION ?? process.env.GOOGLE_CLOUD_REGION ?? "europe-west1";
+    const useVertexAi = !apiKey && Boolean(project);
+
+    if (!apiKey && !useVertexAi) return {};
 
     try {
-      const ai = new GoogleGenAI({ apiKey });
+      const ai = apiKey
+        ? new GoogleGenAI({ apiKey })
+        : new GoogleGenAI({ vertexai: true, project, location });
       const response = await ai.models.generateContent({
         model: process.env.GEMINI_MODEL ?? "gemini-2.5-flash",
         contents,

@@ -6,13 +6,24 @@
     "version": "0.1.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
+    "backgroundColor": "#f7f5f0",
     "newArchEnabled": true,
+    "splash": {
+      "backgroundColor": "#f7f5f0",
+      "resizeMode": "contain"
+    },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.pricelens.app"
     },
     "android": {
-      "package": "com.pricelens.app"
+      "package": "com.pricelens.app",
+      "blockedPermissions": [
+        "android.permission.RECORD_AUDIO"
+      ],
+      "adaptiveIcon": {
+        "backgroundColor": "#111827"
+      }
     },
     "plugins": [
       "expo-router",
