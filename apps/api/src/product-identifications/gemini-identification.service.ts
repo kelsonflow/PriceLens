@@ -1,6 +1,6 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { GoogleGenAI } from "@google/genai";
-import { mockIdentification, type ProductIdentification, type SearchSourceType } from "@pricelens/shared";
+import { type ProductIdentification, type SearchSourceType } from "@pricelens/shared";
 import { GoogleVisionService, type GoogleVisionSignals } from "./google-vision.service";
 
 interface GeminiProductResult {
@@ -57,7 +57,7 @@ export class GeminiIdentificationService {
 
       return this.parseJson(response.text ?? "");
     } catch (error) {
-      this.logger.warn(`Gemini identification failed; falling back to mock data. ${String(error)}`);
+      this.logger.warn(`Gemini identification failed; returning an empty identification. ${String(error)}`);
       return {};
     }
   }
@@ -80,6 +80,7 @@ export class GeminiIdentificationService {
       '  "confidence": 0',
       "}",
       "Nao inventes codigos de barras. Se nao souberes, usa string vazia.",
+      "Nao inventes marcas, modelos ou nomes. Se nao houver evidencia visual/textual suficiente, usa string vazia.",
       "A confianca deve ser um inteiro de 0 a 100."
     ].join("\n");
   }
@@ -116,22 +117,19 @@ export class GeminiIdentificationService {
     }
   }
 
-  private toIdentification(result: GeminiProductResult, sourceType: SearchSourceType, fallbackName = mockIdentification.name): ProductIdentification {
-    const useMockVisualFallback = sourceType !== "text";
+  private toIdentification(result: GeminiProductResult, sourceType: SearchSourceType, fallbackName = ""): ProductIdentification {
     return {
-      ...mockIdentification,
       id: `ident_${crypto.randomUUID()}`,
       sourceType,
       name: result.name?.trim() || fallbackName,
-      brand: result.brand?.trim() || (useMockVisualFallback ? mockIdentification.brand : undefined),
-      model: result.model?.trim() || (useMockVisualFallback ? mockIdentification.model : undefined),
-      category: result.category?.trim() || (useMockVisualFallback ? mockIdentification.category : "Pesquisa textual"),
-      color: result.color?.trim() || (useMockVisualFallback ? mockIdentification.color : undefined),
-      visibleFeatures: Array.isArray(result.visibleFeatures) && result.visibleFeatures.length > 0 ? result.visibleFeatures.slice(0, 8) : useMockVisualFallback ? mockIdentification.visibleFeatures : [],
+      brand: result.brand?.trim() || undefined,
+      model: result.model?.trim() || undefined,
+      category: result.category?.trim() || (sourceType === "text" ? "Pesquisa textual" : undefined),
+      color: result.color?.trim() || undefined,
+      visibleFeatures: Array.isArray(result.visibleFeatures) && result.visibleFeatures.length > 0 ? result.visibleFeatures.slice(0, 8) : [],
       barcode: result.barcode?.trim() || undefined,
       ocrText: result.ocrText?.trim() || undefined,
-      confidence: clampConfidence(result.confidence ?? (useMockVisualFallback ? mockIdentification.confidence : 60)),
-      imageUrl: useMockVisualFallback ? mockIdentification.imageUrl : undefined,
+      confidence: clampConfidence(result.confidence ?? 0),
       createdAt: new Date().toISOString()
     };
   }

@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
-import { getOfferBadge, mockIdentification, mockOffers, rankOffers, type NormalizedOffer, type ProductIdentification } from "@pricelens/shared";
+import { getOfferBadge, rankOffers, type NormalizedOffer, type ProductIdentification } from "@pricelens/shared";
 import { useCallback, useMemo, useState } from "react";
 import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, useColorScheme, useWindowDimensions, View } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
@@ -9,7 +9,17 @@ type Screen = "home" | "results" | "saved" | "plans" | "profile";
 type SavedItem = { id: string; kind: "favorite" | "history" | "alert"; title: string; subtitle: string; createdAt: string; offer?: NormalizedOffer };
 type AppNotice = { title: string; message: string; tone: "success" | "warning" | "error" };
 
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL;
+const DEFAULT_API_BASE_URL = "https://pricelens-api-44ftuum65a-ew.a.run.app";
+const API_BASE_URL = (process.env.EXPO_PUBLIC_API_BASE_URL ?? DEFAULT_API_BASE_URL).replace(/\/$/, "");
+
+const emptyIdentification: ProductIdentification = {
+  id: "pending",
+  sourceType: "text",
+  name: "",
+  visibleFeatures: [],
+  confidence: 0,
+  createdAt: new Date(0).toISOString()
+};
 
 const lightTheme = {
   bg: "#f7f5f0",
@@ -61,11 +71,11 @@ export default function HomeScreen() {
   const { width } = useWindowDimensions();
 
   const [screen, setScreen] = useState<Screen>("home");
-  const [identification, setIdentification] = useState<ProductIdentification>(mockIdentification);
-  const [productName, setProductName] = useState(mockIdentification.name);
-  const [model, setModel] = useState(mockIdentification.model ?? "");
-  const [category, setCategory] = useState(mockIdentification.category ?? "");
-  const [imageUri, setImageUri] = useState(mockIdentification.imageUrl ?? "");
+  const [identification, setIdentification] = useState<ProductIdentification>(emptyIdentification);
+  const [productName, setProductName] = useState("");
+  const [model, setModel] = useState("");
+  const [category, setCategory] = useState("");
+  const [imageUri, setImageUri] = useState("");
   const [offers, setOffers] = useState<NormalizedOffer[]>([]);
   const [savedItems, setSavedItems] = useState<SavedItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -74,7 +84,7 @@ export default function HomeScreen() {
   const [notifications, setNotifications] = useState(false);
 
   const isCompact = width < 380;
-  const rankedOffers = useMemo(() => rankOffers(offers.length > 0 ? offers : mockOffers), [offers]);
+  const rankedOffers = useMemo(() => rankOffers(offers), [offers]);
   const favorites = savedItems.filter((item) => item.kind === "favorite");
   const history = savedItems.filter((item) => item.kind === "history");
   const alerts = savedItems.filter((item) => item.kind === "alert");
@@ -111,34 +121,48 @@ export default function HomeScreen() {
     setLoading(true);
     setNotice({ title: "A analisar", message: "A identificar produto com a API configurada.", tone: "success" });
     try {
-      const next = API_BASE_URL && asset.base64
-        ? await api<ProductIdentification>("/product-identifications/image", { imageBase64: asset.base64, mimeType: asset.mimeType ?? "image/jpeg", country: "PT", currency: "EUR" })
-        : mockIdentification;
+      if (!asset.base64) {
+        throw new Error("A fotografia não trouxe dados suficientes para análise.");
+      }
+
+      const next = await api<ProductIdentification>("/product-identifications/image", { imageBase64: asset.base64, mimeType: asset.mimeType ?? "image/jpeg", country: "PT", currency: "EUR" });
+      if (!hasUsefulIdentification(next)) {
+        setIdentification({ ...emptyIdentification, sourceType: "image", imageUrl: asset.uri, createdAt: new Date().toISOString() });
+        setProductName("");
+        setModel("");
+        setCategory("");
+        setOffers([]);
+        setNotice({ title: "Produto não identificado", message: "A API respondeu, mas não devolveu nome, marca ou modelo suficientes. Tenta outra foto com a embalagem mais nítida.", tone: "warning" });
+        return;
+      }
       applyIdentification(next);
       remember("history", next.name, "Identificado por imagem");
       setConfirmOpen(true);
-    } catch {
-      applyIdentification(mockIdentification);
-      setNotice({ title: "Modo demonstração", message: "Não consegui ligar à API. Usei dados locais para continuar o fluxo.", tone: "warning" });
-      setConfirmOpen(true);
+    } catch (error) {
+      setIdentification({ ...emptyIdentification, sourceType: "image", imageUrl: asset.uri, createdAt: new Date().toISOString() });
+      setOffers([]);
+      setNotice({ title: "API indisponível", message: error instanceof Error ? error.message : "Não consegui ligar à API de identificação. Confirma o deploy e tenta novamente.", tone: "error" });
     } finally {
       setLoading(false);
     }
   }
 
   async function identifyFromText() {
+    const query = productName.trim();
+    if (!query) {
+      setNotice({ title: "Pesquisa vazia", message: "Escreve o nome, marca ou modelo para pesquisar manualmente.", tone: "warning" });
+      return;
+    }
     setLoading(true);
     setNotice({ title: "A pesquisar", message: "A preparar a comparação do produto.", tone: "success" });
     try {
-      const next = API_BASE_URL
-        ? await api<ProductIdentification>("/product-identifications/text", { query: productName, country: "PT", currency: "EUR" })
-        : { ...mockIdentification, name: productName, model, category, sourceType: "text" as const };
+      const next = await api<ProductIdentification>("/product-identifications/text", { query, country: "PT", currency: "EUR" });
       applyIdentification(next);
-      remember("history", next.name, "Pesquisa por texto");
+      remember("history", next.name || query, "Pesquisa por texto");
       setConfirmOpen(true);
-    } catch {
-      applyIdentification({ ...mockIdentification, name: productName, model, category, sourceType: "text" as const });
-      setNotice({ title: "Modo demonstração", message: "Não consegui ligar à API. Podes continuar com dados simulados.", tone: "warning" });
+    } catch (error) {
+      applyIdentification({ ...emptyIdentification, id: `manual_${Date.now()}`, name: query, model, category, sourceType: "text", confidence: 0, createdAt: new Date().toISOString() });
+      setNotice({ title: "Pesquisa manual", message: error instanceof Error ? `A API não respondeu: ${error.message}` : "A API não respondeu. Podes ajustar os campos e tentar comparar.", tone: "warning" });
       setConfirmOpen(true);
     } finally {
       setLoading(false);
@@ -151,20 +175,18 @@ export default function HomeScreen() {
     setScreen("results");
     setNotice({ title: "A comparar", message: "A ordenar ofertas por preço total e confiança.", tone: "success" });
     try {
-      const response = API_BASE_URL
-        ? await api<{ results: NormalizedOffer[] }>("/searches/offers", { query: productName, model, category, country: "PT", currency: "EUR", condition: "any", maxPrice: 1500, freeShippingOnly: false })
-        : { results: mockOffers };
+      const response = await api<{ results: NormalizedOffer[] }>("/searches/offers", { query: productName, model, category, country: "PT", currency: "EUR", condition: "any", maxPrice: 1500, freeShippingOnly: false });
       setOffers(response.results);
-      setNotice({ title: "Resultados prontos", message: `${response.results.length} ofertas encontradas para comparar.`, tone: "success" });
-    } catch {
-      setOffers(mockOffers);
-      setNotice({ title: "Resultados simulados", message: "A API não respondeu. Mantive o fluxo ativo com dados de demonstração.", tone: "warning" });
+      setNotice({ title: "Resultados prontos", message: response.results.length > 0 ? `${response.results.length} ofertas encontradas para comparar.` : "A API não encontrou ofertas reais para este produto.", tone: response.results.length > 0 ? "success" : "warning" });
+    } catch (error) {
+      setOffers([]);
+      setNotice({ title: "Sem ofertas reais", message: error instanceof Error ? error.message : "A API de preços não respondeu. Tenta novamente depois do deploy.", tone: "error" });
     } finally {
       setLoading(false);
     }
   }
 
-  function applyIdentification(next: ProductIdentification) {
+function applyIdentification(next: ProductIdentification) {
     setIdentification(next);
     setProductName(next.name);
     setModel(next.model ?? "");
@@ -187,7 +209,7 @@ export default function HomeScreen() {
         <View style={styles.shell}>
           <Header styles={styles} theme={theme} />
           <ScrollView contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 104 }]} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-            {screen === "home" && <HomeView styles={styles} theme={theme} isCompact={isCompact} productName={productName} setProductName={setProductName} imageUri={imageUri} loading={loading} notice={notice} onCamera={pickFromCamera} onGallery={pickFromGallery} onSearch={identifyFromText} />}
+            {screen === "home" && <HomeView styles={styles} theme={theme} isCompact={isCompact} productName={productName} setProductName={setProductName} imageUri={imageUri} confidence={identification.confidence} loading={loading} notice={notice} onCamera={pickFromCamera} onGallery={pickFromGallery} onSearch={identifyFromText} />}
             {screen === "results" && <ResultsView styles={styles} theme={theme} productName={productName} model={model} category={category} offers={rankedOffers} loading={loading} notice={notice} onFavorite={saveFavorite} onAlert={createAlert} />}
             {screen === "saved" && <SavedView styles={styles} favorites={favorites} history={history} alerts={alerts} />}
             {screen === "plans" && <PlansView styles={styles} theme={theme} />}
@@ -203,8 +225,12 @@ export default function HomeScreen() {
 
 async function api<T>(path: string, body: unknown): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-  if (!response.ok) throw new Error(`API ${path} failed`);
+  if (!response.ok) throw new Error(`API ${path} falhou com estado ${response.status}`);
   return response.json() as Promise<T>;
+}
+
+function hasUsefulIdentification(identification: ProductIdentification) {
+  return Boolean(identification.name?.trim() || identification.brand?.trim() || identification.model?.trim());
 }
 
 function Header({ styles, theme }: { styles: ReturnType<typeof createStyles>; theme: Theme }) {
@@ -224,14 +250,14 @@ function Header({ styles, theme }: { styles: ReturnType<typeof createStyles>; th
   );
 }
 
-function HomeView(props: { styles: ReturnType<typeof createStyles>; theme: Theme; isCompact: boolean; productName: string; setProductName: (value: string) => void; imageUri: string; loading: boolean; notice: AppNotice; onCamera: () => void; onGallery: () => void; onSearch: () => void }) {
+function HomeView(props: { styles: ReturnType<typeof createStyles>; theme: Theme; isCompact: boolean; productName: string; setProductName: (value: string) => void; imageUri: string; confidence: number; loading: boolean; notice: AppNotice; onCamera: () => void; onGallery: () => void; onSearch: () => void }) {
   const { styles, theme } = props;
   return (
     <View style={styles.stack}>
       <Text style={styles.eyebrow}>Gemini + Google Vision</Text>
       <Text style={[styles.heroTitle, props.isCompact && styles.heroTitleCompact]}>Encontra o melhor preço antes de comprar.</Text>
       <Text style={styles.heroText}>Fotografa, confirma e compara ofertas por preço total, confiança da loja e correspondência do produto.</Text>
-      <ScannerCard styles={styles} theme={theme} imageUri={props.imageUri} confidence={mockIdentification.confidence} onPress={props.onCamera} />
+      <ScannerCard styles={styles} theme={theme} imageUri={props.imageUri} confidence={props.confidence} onPress={props.onCamera} />
       <View style={styles.actionGrid}>
         <Button styles={styles} theme={theme} label={props.loading ? "A analisar" : "Usar câmara"} icon="camera-outline" variant="primary" loading={props.loading} onPress={props.onCamera} />
         <Button styles={styles} theme={theme} label="Galeria" icon="image-outline" variant="secondary" onPress={props.onGallery} />
@@ -254,14 +280,14 @@ function HomeView(props: { styles: ReturnType<typeof createStyles>; theme: Theme
   );
 }
 
-function ScannerCard({ styles, theme, imageUri, confidence, onPress }: { styles: ReturnType<typeof createStyles>; theme: Theme; imageUri: string; confidence: number; onPress: () => void }) {
+function ScannerCard({ styles, theme, imageUri, confidence, onPress }: { styles: ReturnType<typeof createStyles>; theme: Theme; imageUri: string; confidence?: number; onPress: () => void }) {
   return (
     <Pressable style={styles.scannerCard} onPress={onPress} accessibilityRole="button" accessibilityLabel="Abrir câmara para analisar produto">
-      <Image source={{ uri: imageUri }} style={styles.heroImage as never} />
+      {imageUri ? <Image source={{ uri: imageUri }} style={styles.heroImage as never} /> : <View style={styles.scannerEmpty}><Ionicons name="scan-outline" size={44} color="#fff" /></View>}
       <View style={styles.scannerOverlay} />
       <View style={styles.scannerTop}>
         <Text style={styles.scannerLabel}>Scanner</Text>
-        <View style={styles.scannerPill}><Ionicons name="sparkles-outline" size={14} color={theme.ink} /><Text style={styles.scannerPillText}>IA {confidence}%</Text></View>
+        <View style={styles.scannerPill}><Ionicons name="sparkles-outline" size={14} color={theme.ink} /><Text style={styles.scannerPillText}>{typeof confidence === "number" && confidence > 0 ? `IA ${confidence}%` : "IA pronta"}</Text></View>
       </View>
       <View style={styles.scanFrame}>
         <View style={styles.scanCornerTop} />
@@ -344,22 +370,22 @@ function PlansView({ styles, theme }: { styles: ReturnType<typeof createStyles>;
     <View style={styles.stack}>
       <Text style={styles.eyebrow}>Planos</Text>
       <Text style={styles.sectionTitle}>Valor claro antes da subscrição.</Text>
-      <PlanCard styles={styles} title="Starter" tag="Incluído" items={["Comparação por texto", "Análise por imagem", "Histórico básico"]} />
-      <PlanCard styles={styles} title="Premium" tag="Recomendado" featured items={["Alertas de preço", "Preferências avançadas", "Compras recorrentes mais rápidas"]} />
+      <PlanCard styles={styles} theme={theme} title="Starter" tag="Incluído" items={["Comparação por texto", "Análise por imagem", "Histórico básico"]} />
+      <PlanCard styles={styles} theme={theme} title="Premium" tag="Recomendado" featured items={["Alertas de preço", "Preferências avançadas", "Compras recorrentes mais rápidas"]} />
       <Notice styles={styles} theme={theme} notice={{ title: "Transparência", message: "Os preços finais dos planos ainda não estão definidos nesta versão.", tone: "warning" }} />
     </View>
   );
 }
 
-function PlanCard({ styles, title, tag, items, featured }: { styles: ReturnType<typeof createStyles>; title: string; tag: string; items: string[]; featured?: boolean }) {
+function PlanCard({ styles, theme, title, tag, items, featured }: { styles: ReturnType<typeof createStyles>; theme: Theme; title: string; tag: string; items: string[]; featured?: boolean }) {
   return (
     <View style={[styles.planCard, featured && styles.planFeatured]}>
       <View style={styles.planHeader}>
         <Text style={styles.planTitle}>{title}</Text>
         <Text style={featured ? styles.badge : styles.mockBadge}>{tag}</Text>
       </View>
-      {items.map((item) => <View key={item} style={styles.planItem}><Ionicons name="checkmark-circle-outline" size={18} color={featured ? lightTheme.primary : lightTheme.success} /><Text style={styles.planText}>{item}</Text></View>)}
-      <Button styles={styles} theme={lightTheme} label={featured ? "Ver Premium" : "Começar"} icon="arrow-forward-outline" variant={featured ? "primary" : "secondary"} onPress={() => Alert.alert("Plano", "Fluxo de subscrição ainda não está ligado a pagamentos.")} />
+      {items.map((item) => <View key={item} style={styles.planItem}><Ionicons name="checkmark-circle-outline" size={18} color={featured ? theme.primary : theme.success} /><Text style={styles.planText}>{item}</Text></View>)}
+      <Button styles={styles} theme={theme} label={featured ? "Ver Premium" : "Começar"} icon="arrow-forward-outline" variant={featured ? "primary" : "secondary"} onPress={() => Alert.alert("Plano", "Fluxo de subscrição ainda não está ligado a pagamentos.")} />
     </View>
   );
 }
@@ -399,7 +425,7 @@ function ConfirmSheet(props: { styles: ReturnType<typeof createStyles>; theme: T
             </View>
             <Pressable style={styles.headerIcon} onPress={props.onClose} accessibilityRole="button" accessibilityLabel="Fechar confirmação"><Ionicons name="close-outline" size={24} color={theme.ink} /></Pressable>
           </View>
-          <Image source={{ uri: props.imageUri }} style={styles.sheetImage as never} />
+          {props.imageUri ? <Image source={{ uri: props.imageUri }} style={styles.sheetImage as never} /> : <View style={styles.sheetImageEmpty}><Ionicons name="cube-outline" size={34} color={theme.muted} /></View>}
           <Field styles={styles} theme={theme} label="Nome do produto" value={props.productName} onChangeText={props.setProductName} />
           <Field styles={styles} theme={theme} label="Modelo" value={props.model} onChangeText={props.setModel} />
           <Field styles={styles} theme={theme} label="Categoria" value={props.category} onChangeText={props.setCategory} />
@@ -528,6 +554,7 @@ function createStyles(theme: Theme) {
     sectionTitle: { color: theme.ink, fontSize: 30, lineHeight: 35, fontWeight: "900" },
     subtitle: { color: theme.muted, fontSize: 15, lineHeight: 22 },
     scannerCard: { position: "relative", overflow: "hidden", height: 372, borderRadius: 22, backgroundColor: theme.navy },
+    scannerEmpty: { width: "100%", height: "100%", alignItems: "center", justifyContent: "center", backgroundColor: theme.navy },
     heroImage: { width: "100%", height: "100%" },
     scannerOverlay: { ...StyleSheet.absoluteFill, backgroundColor: "rgba(8,15,28,0.5)" },
     scannerTop: { position: "absolute", top: 18, left: 18, right: 18, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
@@ -602,6 +629,7 @@ function createStyles(theme: Theme) {
     sheetHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
     sheetTitle: { color: theme.ink, fontSize: 25, fontWeight: "900" },
     sheetImage: { width: "100%", height: 160, borderRadius: 14, backgroundColor: theme.elevated },
+    sheetImageEmpty: { width: "100%", height: 160, borderRadius: 14, backgroundColor: theme.elevated, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: theme.line },
     chips: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
     chip: { borderRadius: 999, backgroundColor: theme.primarySoft, paddingHorizontal: 10, paddingVertical: 7, color: theme.primary, fontWeight: "800", fontSize: 12 },
     empty: { minHeight: 220, borderRadius: 16, backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.line, alignItems: "center", justifyContent: "center", padding: 22 },

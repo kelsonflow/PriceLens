@@ -7,6 +7,10 @@ export class MockShoppingProvider implements ShoppingProvider {
   readonly provider = "mock";
 
   async search(input: ProductSearchInput): Promise<NormalizedOffer[]> {
+    if (process.env.ENABLE_MOCK_SHOPPING !== "true") {
+      return [];
+    }
+
     const normalizedQuery = input.query.toLowerCase();
 
     return mockOffers
@@ -20,4 +24,3 @@ export class MockShoppingProvider implements ShoppingProvider {
       }));
   }
 }
-
