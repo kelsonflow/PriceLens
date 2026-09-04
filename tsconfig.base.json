@@ -9,6 +9,7 @@
     "skipLibCheck": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
+    "ignoreDeprecations": "6.0",
     "baseUrl": ".",
     "paths": {
       "@pricelens/shared": ["packages/shared/src/index.ts"],
@@ -16,4 +17,3 @@
     }
   }
 }
-
