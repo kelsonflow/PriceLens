@@ -1,14 +1,16 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { MockShoppingProvider } from "../src/shopping-providers/mock-shopping.provider";
+import { SerpApiShoppingProvider } from "../src/shopping-providers/serpapi-shopping.provider";
 import { ShoppingProvidersService } from "../src/shopping-providers/shopping-providers.service";
 
 describe("ShoppingProvidersService", () => {
   afterEach(() => {
     delete process.env.ENABLE_MOCK_SHOPPING;
+    delete process.env.SERPAPI_API_KEY;
   });
 
   it("does not return mock offers unless explicitly enabled", async () => {
-    const service = new ShoppingProvidersService(new MockShoppingProvider());
+    const service = new ShoppingProvidersService(new SerpApiShoppingProvider(), new MockShoppingProvider());
     const offers = await service.search({
       query: "iPhone 15",
       country: "PT",
@@ -20,7 +22,7 @@ describe("ShoppingProvidersService", () => {
 
   it("returns normalized and ranked mock offers", async () => {
     process.env.ENABLE_MOCK_SHOPPING = "true";
-    const service = new ShoppingProvidersService(new MockShoppingProvider());
+    const service = new ShoppingProvidersService(new SerpApiShoppingProvider(), new MockShoppingProvider());
     const offers = await service.search({
       query: "iPhone 15",
       country: "PT",
