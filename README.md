@@ -49,9 +49,9 @@ Aplicacoes:
 
 - Web app com scanner/upload/pesquisa por texto, confirmacao do produto, resultados, detalhes, favoritos, historico, alertas, perfil e painel admin.
 - Mobile app Expo com o mesmo fluxo principal em versao mobile-first.
-- API NestJS com healthcheck, identificacao por texto/imagem via Gemini, confirmacao, pesquisa de ofertas e dados de utilizador em memoria para o MVP.
+- API NestJS com healthcheck, seguranca basica, rate limit, identificacao por texto/imagem via Gemini + Google Vision, confirmacao, pesquisa de ofertas reais via SerpApi, cache de pesquisas, dados por utilizador e alertas de preco.
 - Pacote partilhado com normalizacao, validacao, deduplicacao e ordenacao de ofertas.
-- Prisma schema preparado para PostgreSQL em Google Cloud SQL.
+- A camada atual usa memoria do processo para dados de utilizador e alertas; para producao final deve ser trocada por Cloud SQL ou Firestore.
 
 ## Gemini e Google Vision
 
@@ -61,9 +61,11 @@ Configura no backend:
 GEMINI_API_KEY=...
 GEMINI_MODEL=gemini-2.5-flash
 GOOGLE_VISION_ENABLED=true
+SERPAPI_API_KEY=...
+ENABLE_MOCK_SHOPPING=false
 ```
 
-Na identificacao por imagem, a API usa Google Cloud Vision para OCR, logos, labels e objetos, e passa esses sinais para o Gemini identificar melhor o produto. Sem credenciais ou sem `GEMINI_API_KEY`, a API usa fallback de demonstracao para manter o MVP utilizavel.
+Na identificacao por imagem, a API usa Google Cloud Vision para OCR, logos, labels e objetos, e passa esses sinais para o Gemini identificar melhor o produto. Em Cloud Run, o Gemini pode usar Vertex AI/ADC com a service account do servico, sem chave de API. A pesquisa de precos usa SerpApi Google Shopping quando `SERPAPI_API_KEY` esta configurada.
 
 ## Principios do produto
 

@@ -1,4 +1,7 @@
-import { Body, Controller, Delete, Get, Param, Post, Query } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from "@nestjs/common";
+import { RequestUser, type RequestUser as RequestUserContext } from "../common/request-user.decorator";
+import { CreateSavedItemDto, type SavedItemType } from "./dto/create-saved-item.dto";
+import { UpdateSavedItemDto } from "./dto/update-saved-item.dto";
 import { UserDataService, type SavedItem } from "./user-data.service";
 
 @Controller("user-data")
@@ -6,18 +9,22 @@ export class UserDataController {
   constructor(private readonly userDataService: UserDataService) {}
 
   @Get()
-  list(@Query("type") type?: SavedItem["type"]) {
-    return { items: this.userDataService.list(type) };
+  list(@RequestUser() user: RequestUserContext, @Query("type") type?: SavedItemType) {
+    return { items: this.userDataService.list(user.id, type) };
   }
 
   @Post()
-  create(@Body() body: { type: SavedItem["type"]; title: string; payload: unknown }) {
-    return this.userDataService.create(body.type, body.title, body.payload);
+  create(@RequestUser() user: RequestUserContext, @Body() body: CreateSavedItemDto) {
+    return this.userDataService.create(user.id, body.type, body.title, body.payload);
+  }
+
+  @Patch(":id")
+  update(@RequestUser() user: RequestUserContext, @Param("id") id: string, @Body() body: UpdateSavedItemDto) {
+    return this.userDataService.update(user.id, id, body);
   }
 
   @Delete(":id")
-  remove(@Param("id") id: string) {
-    return this.userDataService.remove(id);
+  remove(@RequestUser() user: RequestUserContext, @Param("id") id: string) {
+    return this.userDataService.remove(user.id, id);
   }
 }
-

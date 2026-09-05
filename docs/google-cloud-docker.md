@@ -72,7 +72,9 @@ gcloud run deploy pricelens-api \
   --region "$REGION" \
   --platform managed \
   --allow-unauthenticated \
-  --port 4000
+  --port 4000 \
+  --set-env-vars GOOGLE_CLOUD_PROJECT="$PROJECT_ID",GOOGLE_CLOUD_PROJECT_ID="$PROJECT_ID",GOOGLE_CLOUD_LOCATION="$REGION",GOOGLE_CLOUD_REGION="$REGION",GEMINI_MODEL="gemini-2.5-flash",GOOGLE_VISION_ENABLED="true",ENABLE_MOCK_SHOPPING="false",SERPAPI_MAX_RESULTS="20",SEARCH_CACHE_ENABLED="true",SEARCH_CACHE_TTL_MS="900000" \
+  --set-secrets SERPAPI_API_KEY=SERPAPI_API_KEY:latest
 ```
 
 Web:
@@ -107,10 +109,16 @@ No Cloud Run, configura pelo menos:
 - `GCS_PRODUCT_IMAGES_BUCKET`
 - `GEMINI_MODEL`
 - `GOOGLE_VISION_ENABLED`
+- `ENABLE_MOCK_SHOPPING`
+- `SERPAPI_MAX_RESULTS`
+- `SEARCH_CACHE_ENABLED`
+- `SEARCH_CACHE_TTL_MS`
+- `RATE_LIMIT_MAX_REQUESTS`
+- `RATE_LIMIT_WINDOW_MS`
 - `REDIS_URL`, quando Memorystore estiver ligado
 - `SENTRY_DSN`, quando Sentry estiver ligado
 
-Usa Secret Manager para valores sensiveis, como `DATABASE_URL`, chaves de providers, Stripe e credenciais de servicos externos. Se a organizacao bloquear chaves de API, deixa `GEMINI_API_KEY` vazio e usa Vertex AI com a service account do Cloud Run.
+Usa Secret Manager para valores sensiveis, como `DATABASE_URL`, `SERPAPI_API_KEY`, `API_ACCESS_TOKEN`, Stripe e credenciais de servicos externos. Se a organizacao bloquear chaves de API do Gemini, deixa `GEMINI_API_KEY` vazio e usa Vertex AI com a service account do Cloud Run.
 
 Para Gemini via Vertex AI no Cloud Run, ativa `aiplatform.googleapis.com`, atribui `roles/aiplatform.user` a service account do servico e configura:
 
@@ -125,6 +133,36 @@ Para Google Cloud Vision no Cloud Run, ativa `vision.googleapis.com` e deixa o s
 ```bash
 gcloud auth application-default login
 ```
+
+Para SerpApi:
+
+```bash
+printf "%s" "$SERPAPI_KEY" | gcloud secrets create SERPAPI_API_KEY \
+  --data-file=- \
+  --replication-policy=automatic
+
+gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+  --member="serviceAccount:PROJECT_NUMBER-compute@developer.gserviceaccount.com" \
+  --role="roles/secretmanager.secretAccessor"
+```
+
+## Endpoints principais do backend
+
+- `GET /health`
+- `POST /product-identifications/text`
+- `POST /product-identifications/image`
+- `PATCH /product-identifications/:id/confirm`
+- `POST /searches/offers`
+- `GET /user-data`
+- `POST /user-data`
+- `PATCH /user-data/:id`
+- `DELETE /user-data/:id`
+- `GET /price-alerts`
+- `POST /price-alerts`
+- `PATCH /price-alerts/:id`
+- `DELETE /price-alerts/:id`
+- `POST /price-alerts/check`
+- `POST /price-alerts/:id/check`
 
 ## Notas importantes
 

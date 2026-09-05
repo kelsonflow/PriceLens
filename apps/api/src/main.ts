@@ -3,6 +3,7 @@ import { ValidationPipe } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
 import { json } from "express";
 import { AppModule } from "./app.module";
+import { apiAccessTokenMiddleware, rateLimitMiddleware, securityHeadersMiddleware } from "./common/security.middleware";
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { bodyParser: false });
@@ -10,6 +11,9 @@ async function bootstrap() {
     origin: process.env.WEB_APP_URL ?? "http://localhost:3000",
     credentials: true
   });
+  app.use(securityHeadersMiddleware);
+  app.use(rateLimitMiddleware);
+  app.use(apiAccessTokenMiddleware);
   app.use(json({ limit: "10mb" }));
   app.useGlobalPipes(
     new ValidationPipe({
