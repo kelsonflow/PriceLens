@@ -318,22 +318,26 @@ function ResultsView({ styles, theme, productName, model, category, offers, load
 
 function OfferCard({ styles, theme, offer, offers, onFavorite, onAlert }: { styles: ReturnType<typeof createStyles>; theme: Theme; offer: NormalizedOffer; offers: NormalizedOffer[]; onFavorite: () => void; onAlert: () => void }) {
   const badge = getOfferBadge(offer, offers);
+  const buyUrl = offer.affiliateUrl ?? offer.productUrl;
   return (
     <View style={styles.offerCard}>
       <Image source={{ uri: offer.imageUrl }} style={styles.offerImage as never} />
       <View style={styles.offerInfo}>
         <View style={styles.badgeRow}>
+          <Text style={offer.matchType === "exact" ? styles.exactBadge : styles.similarBadge}>{offer.matchType === "exact" ? "Produto exato" : "Semelhante"}</Text>
           {badge && <Text style={styles.badge}>{badge}</Text>}
+          {offer.affiliateUrl && <Text style={styles.affiliateBadge}>Afiliado</Text>}
           {offer.isMock && <Text style={styles.mockBadge}>Demo</Text>}
         </View>
         <Text style={styles.offerTitle} numberOfLines={2}>{offer.title}</Text>
-        <Text style={styles.offerStore} numberOfLines={1}>{offer.storeName} · Match {offer.matchConfidence}% · Loja {offer.storeTrustScore}%</Text>
+        <Text style={styles.offerStore} numberOfLines={1}>{offer.storeName} · {offer.matchConfidence}% correspondência · Loja {offer.storeTrustScore}%</Text>
+        {offer.matchReason && <Text style={styles.matchReason} numberOfLines={2}>{offer.matchReason}</Text>}
         <View style={styles.priceRow}>
           <Text style={styles.price}>{offer.totalPrice.toFixed(2)} {offer.currency}</Text>
           <Text style={styles.shipping}>{offer.shippingPrice === 0 ? "Envio grátis" : `+ ${offer.shippingPrice.toFixed(2)} envio`}</Text>
         </View>
         <View style={styles.rowActions}>
-          <Pressable style={styles.buyButton} onPress={() => Linking.openURL(offer.productUrl)} accessibilityRole="link" accessibilityLabel={`Comprar ${offer.title}`}>
+          <Pressable style={styles.buyButton} onPress={() => Linking.openURL(buyUrl)} accessibilityRole="link" accessibilityLabel={`Comprar ${offer.title}`}>
             <Text style={styles.buyButtonText}>Comprar</Text>
           </Pressable>
           <Pressable style={styles.iconAction} onPress={onFavorite} accessibilityRole="button" accessibilityLabel="Guardar oferta nos favoritos"><Ionicons name="heart-outline" size={19} color={theme.ink} /></Pressable>
@@ -600,8 +604,12 @@ function createStyles(theme: Theme) {
     badgeRow: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
     badge: { alignSelf: "flex-start", borderRadius: 999, backgroundColor: theme.warningSoft, color: theme.warning, paddingHorizontal: 8, paddingVertical: 5, fontSize: 11, fontWeight: "900" },
     mockBadge: { alignSelf: "flex-start", borderRadius: 999, backgroundColor: theme.primarySoft, color: theme.primary, paddingHorizontal: 8, paddingVertical: 5, fontSize: 11, fontWeight: "900" },
+    exactBadge: { alignSelf: "flex-start", borderRadius: 999, backgroundColor: theme.successSoft, color: theme.success, paddingHorizontal: 8, paddingVertical: 5, fontSize: 11, fontWeight: "900" },
+    similarBadge: { alignSelf: "flex-start", borderRadius: 999, backgroundColor: theme.elevated, color: theme.muted, paddingHorizontal: 8, paddingVertical: 5, fontSize: 11, fontWeight: "900", borderWidth: 1, borderColor: theme.line },
+    affiliateBadge: { alignSelf: "flex-start", borderRadius: 999, backgroundColor: theme.primarySoft, color: theme.primary, paddingHorizontal: 8, paddingVertical: 5, fontSize: 11, fontWeight: "900" },
     offerTitle: { color: theme.ink, fontSize: 16, lineHeight: 20, fontWeight: "900", marginTop: 8 },
     offerStore: { color: theme.muted, marginTop: 4, fontSize: 13 },
+    matchReason: { color: theme.muted, marginTop: 5, fontSize: 12, lineHeight: 17 },
     priceRow: { marginTop: 8 },
     price: { color: theme.ink, fontSize: 22, fontWeight: "900" },
     shipping: { color: theme.success, fontSize: 12, fontWeight: "800", marginTop: 2 },

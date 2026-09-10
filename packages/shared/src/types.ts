@@ -31,6 +31,8 @@ export interface ProductSearchInput {
   condition?: OfferCondition;
 }
 
+export type OfferMatchType = "exact" | "similar";
+
 export interface NormalizedOffer {
   id: string;
   provider: string;
@@ -53,8 +55,13 @@ export interface NormalizedOffer {
   sellerRating?: number;
   storeTrustScore: number;
   matchConfidence: number;
+  matchType?: OfferMatchType;
+  matchReason?: string;
   isSponsored?: boolean;
   sponsoredDisclosure?: string;
+  affiliateUrl?: string;
+  affiliateProvider?: string;
+  affiliateDisclosure?: string;
   lastUpdatedAt: string;
   isMock?: boolean;
 }
@@ -71,4 +78,3 @@ export interface OfferFilters {
   store?: string;
   verifiedSellersOnly?: boolean;
 }
-

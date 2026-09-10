@@ -50,6 +50,8 @@ Aplicacoes:
 - Web app com scanner/upload/pesquisa por texto, confirmacao do produto, resultados, detalhes, favoritos, historico, alertas, perfil e painel admin.
 - Mobile app Expo com o mesmo fluxo principal em versao mobile-first.
 - API NestJS com healthcheck, seguranca basica, rate limit, identificacao por texto/imagem via Gemini + Google Vision, confirmacao, pesquisa de ofertas reais via SerpApi, cache de pesquisas, dados por utilizador e alertas de preco.
+- Matching Engine para distinguir ofertas de produto exato de produtos semelhantes.
+- Affiliate Engine no backend para gerar links de afiliado sem embutir regras de marketplaces na app.
 - Pacote partilhado com normalizacao, validacao, deduplicacao e ordenacao de ofertas.
 - A camada atual usa memoria do processo para dados de utilizador e alertas; para producao final deve ser trocada por Cloud SQL ou Firestore.
 
@@ -63,9 +65,12 @@ GEMINI_MODEL=gemini-2.5-flash
 GOOGLE_VISION_ENABLED=true
 SERPAPI_API_KEY=...
 ENABLE_MOCK_SHOPPING=false
+EXACT_MATCH_THRESHOLD=92
+EBAY_AFFILIATE_CAMPAIGN_ID=...
+AMAZON_ASSOCIATE_TAG=...
 ```
 
-Na identificacao por imagem, a API usa Google Cloud Vision para OCR, logos, labels e objetos, e passa esses sinais para o Gemini identificar melhor o produto. Em Cloud Run, o Gemini pode usar Vertex AI/ADC com a service account do servico, sem chave de API. A pesquisa de precos usa SerpApi Google Shopping quando `SERPAPI_API_KEY` esta configurada.
+Na identificacao por imagem, a API usa Google Cloud Vision para OCR, logos, labels e objetos, e passa esses sinais para o Gemini identificar melhor o produto. Em Cloud Run, o Gemini pode usar Vertex AI/ADC com a service account do servico, sem chave de API. A pesquisa de precos usa SerpApi Google Shopping quando `SERPAPI_API_KEY` esta configurada. Cada oferta e classificada como `exact` ou `similar`, e links elegiveis recebem `affiliateUrl`.
 
 ## Principios do produto
 

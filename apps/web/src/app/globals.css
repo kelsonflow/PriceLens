@@ -857,6 +857,9 @@ summary:focus-visible {
 .detected-list span,
 .badge,
 .mock-badge,
+.exact-badge,
+.similar-badge,
+.affiliate-badge,
 .offer-metrics span {
   border-radius: var(--radius);
   padding: 7px 9px;
@@ -968,6 +971,49 @@ summary:focus-visible {
   display: inline-block;
   background: var(--primary-soft);
   color: var(--primary);
+}
+
+.badge-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.exact-badge,
+.similar-badge,
+.affiliate-badge {
+  display: inline-block;
+}
+
+.exact-badge {
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.similar-badge {
+  border: 1px solid var(--line);
+  background: var(--surface-strong);
+  color: var(--muted);
+}
+
+.affiliate-badge {
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+
+.match-reason,
+.affiliate-disclosure {
+  margin: 7px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.affiliate-disclosure {
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-strong);
 }
 
 .price-stack {

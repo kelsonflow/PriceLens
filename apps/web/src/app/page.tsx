@@ -278,11 +278,36 @@ function Filters(props: { condition: OfferCondition | "any"; setCondition: (valu
 
 function OfferCard({ offer, allOffers, onDetails, onFavorite, onAlert, onReview }: { offer: NormalizedOffer; allOffers: NormalizedOffer[]; onDetails: () => void; onFavorite: () => void; onAlert: () => void; onReview: () => void }) {
   const badge = getOfferBadge(offer, allOffers);
-  return <article className="offer-card"><Image src={offer.imageUrl ?? mockIdentification.imageUrl ?? ""} alt={offer.title} width={180} height={180} /><div className="offer-body"><div className="offer-title-row"><div>{badge && <span className="badge">{badge}</span>}{offer.isMock && <span className="mock-badge">Dados simulados</span>}<h2>{offer.title}</h2><p>{offer.storeName} · {conditionLabels[offer.condition]} · {offer.availability === "limited" ? "Stock limitado" : "Disponivel"}</p></div><div className="price-stack"><span>{offer.totalPrice.toFixed(2)} EUR</span><small>{offer.itemPrice.toFixed(2)} + {offer.shippingPrice.toFixed(2)} envio</small></div></div><div className="offer-metrics"><span>Match {offer.matchConfidence}%</span><span>Loja {offer.storeTrustScore}%</span><span>Entrega {offer.estimatedDelivery}</span><span>Atualizado {new Date(offer.lastUpdatedAt).toLocaleString("pt-PT")}</span></div><div className="offer-actions"><button className="primary-button compact" onClick={onDetails}>Detalhes</button><a href={offer.productUrl} target="_blank" rel="noreferrer" className="secondary-button compact"><ExternalLink size={17} />Comprar</a><button className="icon-button" onClick={onFavorite} aria-label="Guardar favorito"><Heart size={18} /></button><button className="icon-button" onClick={onAlert} aria-label="Criar alerta"><Bell size={18} /></button><button className="icon-button" onClick={onReview} aria-label="Sinalizar para admin"><AlertCircle size={18} /></button></div></div></article>;
+  const buyUrl = offer.affiliateUrl ?? offer.productUrl;
+  return (
+    <article className="offer-card">
+      <Image src={offer.imageUrl ?? mockIdentification.imageUrl ?? ""} alt={offer.title} width={180} height={180} />
+      <div className="offer-body">
+        <div className="offer-title-row">
+          <div>
+            <div className="badge-row">
+              <span className={offer.matchType === "exact" ? "exact-badge" : "similar-badge"}>{offer.matchType === "exact" ? "Produto exato" : "Semelhante"}</span>
+              {badge && <span className="badge">{badge}</span>}
+              {offer.affiliateUrl && <span className="affiliate-badge">Afiliado</span>}
+              {offer.isMock && <span className="mock-badge">Dados simulados</span>}
+            </div>
+            <h2>{offer.title}</h2>
+            <p>{offer.storeName} · {conditionLabels[offer.condition]} · {offer.availability === "limited" ? "Stock limitado" : "Disponivel"}</p>
+            {offer.matchReason && <p className="match-reason">{offer.matchReason}</p>}
+          </div>
+          <div className="price-stack"><span>{offer.totalPrice.toFixed(2)} EUR</span><small>{offer.itemPrice.toFixed(2)} + {offer.shippingPrice.toFixed(2)} envio</small></div>
+        </div>
+        <div className="offer-metrics"><span>{offer.matchConfidence}% correspondência</span><span>Loja {offer.storeTrustScore}%</span><span>Entrega {offer.estimatedDelivery}</span><span>Atualizado {new Date(offer.lastUpdatedAt).toLocaleString("pt-PT")}</span></div>
+        {offer.affiliateDisclosure && <p className="affiliate-disclosure">{offer.affiliateDisclosure}</p>}
+        <div className="offer-actions"><button className="primary-button compact" onClick={onDetails}>Detalhes</button><a href={buyUrl} target="_blank" rel="noreferrer" className="secondary-button compact"><ExternalLink size={17} />Comprar</a><button className="icon-button" onClick={onFavorite} aria-label="Guardar favorito"><Heart size={18} /></button><button className="icon-button" onClick={onAlert} aria-label="Criar alerta"><Bell size={18} /></button><button className="icon-button" onClick={onReview} aria-label="Sinalizar para admin"><AlertCircle size={18} /></button></div>
+      </div>
+    </article>
+  );
 }
 
 function OfferDetails({ offer, onBack, onFavorite, onAlert }: { offer: NormalizedOffer; onBack: () => void; onFavorite: () => void; onAlert: () => void }) {
-  return <div className="workflow-panel"><button className="secondary-button" onClick={onBack}>Voltar</button><div className="detail-layout"><Image src={offer.imageUrl ?? mockIdentification.imageUrl ?? ""} alt={offer.title} width={520} height={520} /><div className="form-panel"><span className="badge">Detalhes da oferta</span><h1>{offer.title}</h1><p className="subtitle">{offer.storeName} · {conditionLabels[offer.condition]}</p><div className="detail-grid"><span>Preco</span><strong>{offer.itemPrice.toFixed(2)} {offer.currency}</strong><span>Envio</span><strong>{offer.shippingPrice.toFixed(2)} {offer.currency}</strong><span>Total</span><strong>{offer.totalPrice.toFixed(2)} {offer.currency}</strong><span>Confianca loja</span><strong>{offer.storeTrustScore}%</strong><span>Confianca match</span><strong>{offer.matchConfidence}%</strong></div><div className="trust-note"><ShieldCheck size={18} />Os precos podem mudar na pagina da loja. Nunca apresentamos isto como garantia total de seguranca.</div><div className="primary-actions"><a className="primary-button" href={offer.productUrl} target="_blank" rel="noreferrer">Comprar</a><button className="secondary-button" onClick={onFavorite}>Guardar</button><button className="secondary-button" onClick={onAlert}>Criar alerta</button></div></div></div></div>;
+  const buyUrl = offer.affiliateUrl ?? offer.productUrl;
+  return <div className="workflow-panel"><button className="secondary-button" onClick={onBack}>Voltar</button><div className="detail-layout"><Image src={offer.imageUrl ?? mockIdentification.imageUrl ?? ""} alt={offer.title} width={520} height={520} /><div className="form-panel"><span className={offer.matchType === "exact" ? "exact-badge" : "similar-badge"}>{offer.matchType === "exact" ? "Produto exato" : "Produto semelhante"}</span><h1>{offer.title}</h1><p className="subtitle">{offer.storeName} · {conditionLabels[offer.condition]}</p>{offer.matchReason && <p className="match-reason">{offer.matchReason}</p>}<div className="detail-grid"><span>Preco</span><strong>{offer.itemPrice.toFixed(2)} {offer.currency}</strong><span>Envio</span><strong>{offer.shippingPrice.toFixed(2)} {offer.currency}</strong><span>Total</span><strong>{offer.totalPrice.toFixed(2)} {offer.currency}</strong><span>Confianca loja</span><strong>{offer.storeTrustScore}%</strong><span>Correspondencia</span><strong>{offer.matchConfidence}%</strong></div><div className="trust-note"><ShieldCheck size={18} />Os precos podem mudar na pagina da loja. Nunca apresentamos isto como garantia total de seguranca.</div>{offer.affiliateDisclosure && <p className="affiliate-disclosure">{offer.affiliateDisclosure}</p>}<div className="primary-actions"><a className="primary-button" href={buyUrl} target="_blank" rel="noreferrer">Comprar</a><button className="secondary-button" onClick={onFavorite}>Guardar</button><button className="secondary-button" onClick={onAlert}>Criar alerta</button></div></div></div></div>;
 }
 
 function ListScreen({ title, items, empty, onDelete }: { title: string; items: SavedItem[]; empty: string; onDelete: (id: string) => void }) {

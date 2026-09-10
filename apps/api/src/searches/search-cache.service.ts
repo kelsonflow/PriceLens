@@ -4,8 +4,14 @@ import { SearchOffersDto } from "./dto/search-offers.dto";
 
 interface SearchCacheEntry {
   results: NormalizedOffer[];
+  groups: OfferMatchGroups;
   expiresAt: number;
   createdAt: string;
+}
+
+export interface OfferMatchGroups {
+  exact: NormalizedOffer[];
+  similar: NormalizedOffer[];
 }
 
 @Injectable()
@@ -28,6 +34,7 @@ export class SearchCacheService {
     if (process.env.SEARCH_CACHE_ENABLED === "false") return;
     this.entries.set(this.key(dto), {
       results,
+      groups: groupOffersByMatch(results),
       expiresAt: Date.now() + this.ttlMs(),
       createdAt: new Date().toISOString()
     });
@@ -54,4 +61,11 @@ export class SearchCacheService {
   private ttlMs(): number {
     return Number(process.env.SEARCH_CACHE_TTL_MS ?? 15 * 60 * 1000);
   }
+}
+
+export function groupOffersByMatch(offers: NormalizedOffer[]): OfferMatchGroups {
+  return {
+    exact: offers.filter((offer) => offer.matchType === "exact"),
+    similar: offers.filter((offer) => offer.matchType !== "exact")
+  };
 }

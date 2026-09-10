@@ -58,6 +58,13 @@ export function rankOffers(offers: NormalizedOffer[], filters: OfferFilters = {}
     .slice(0, limit);
 }
 
+export function groupOffersByMatch(offers: NormalizedOffer[]) {
+  return {
+    exact: offers.filter((offer) => offer.matchType === "exact"),
+    similar: offers.filter((offer) => offer.matchType !== "exact")
+  };
+}
+
 export function getOfferBadge(offer: NormalizedOffer, offers: NormalizedOffer[]): "Melhor preco" | "Entrega mais rapida" | "Loja mais confiavel" | undefined {
   const validOffers = rankOffers(offers, {}, offers.length);
   if (validOffers[0]?.id === offer.id) return "Melhor preco";
@@ -104,4 +111,3 @@ function clampScore(value: number): number {
 function roundMoney(value: number): number {
   return Math.round(value * 100) / 100;
 }
-

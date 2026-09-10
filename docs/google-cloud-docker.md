@@ -73,7 +73,7 @@ gcloud run deploy pricelens-api \
   --platform managed \
   --allow-unauthenticated \
   --port 4000 \
-  --set-env-vars GOOGLE_CLOUD_PROJECT="$PROJECT_ID",GOOGLE_CLOUD_PROJECT_ID="$PROJECT_ID",GOOGLE_CLOUD_LOCATION="$REGION",GOOGLE_CLOUD_REGION="$REGION",GEMINI_MODEL="gemini-2.5-flash",GOOGLE_VISION_ENABLED="true",ENABLE_MOCK_SHOPPING="false",SERPAPI_MAX_RESULTS="20",SEARCH_CACHE_ENABLED="true",SEARCH_CACHE_TTL_MS="900000" \
+  --set-env-vars GOOGLE_CLOUD_PROJECT="$PROJECT_ID",GOOGLE_CLOUD_PROJECT_ID="$PROJECT_ID",GOOGLE_CLOUD_LOCATION="$REGION",GOOGLE_CLOUD_REGION="$REGION",GEMINI_MODEL="gemini-2.5-flash",GOOGLE_VISION_ENABLED="true",ENABLE_MOCK_SHOPPING="false",SERPAPI_MAX_RESULTS="20",SEARCH_CACHE_ENABLED="true",SEARCH_CACHE_TTL_MS="900000",EXACT_MATCH_THRESHOLD="92" \
   --set-secrets SERPAPI_API_KEY=SERPAPI_API_KEY:latest
 ```
 
@@ -115,10 +115,15 @@ No Cloud Run, configura pelo menos:
 - `SEARCH_CACHE_TTL_MS`
 - `RATE_LIMIT_MAX_REQUESTS`
 - `RATE_LIMIT_WINDOW_MS`
+- `EXACT_MATCH_THRESHOLD`
+- `EBAY_AFFILIATE_MKRID`
+- `EBAY_AFFILIATE_TOOL_ID`
+- `EBAY_AFFILIATE_CUSTOM_ID`
+- `AFFILIATE_DOMAIN_RULES`
 - `REDIS_URL`, quando Memorystore estiver ligado
 - `SENTRY_DSN`, quando Sentry estiver ligado
 
-Usa Secret Manager para valores sensiveis, como `DATABASE_URL`, `SERPAPI_API_KEY`, `API_ACCESS_TOKEN`, Stripe e credenciais de servicos externos. Se a organizacao bloquear chaves de API do Gemini, deixa `GEMINI_API_KEY` vazio e usa Vertex AI com a service account do Cloud Run.
+Usa Secret Manager para valores sensiveis, como `DATABASE_URL`, `SERPAPI_API_KEY`, `API_ACCESS_TOKEN`, `EBAY_AFFILIATE_CAMPAIGN_ID`, `AMAZON_ASSOCIATE_TAG`, Stripe e credenciais de servicos externos. Se a organizacao bloquear chaves de API do Gemini, deixa `GEMINI_API_KEY` vazio e usa Vertex AI com a service account do Cloud Run.
 
 Para Gemini via Vertex AI no Cloud Run, ativa `aiplatform.googleapis.com`, atribui `roles/aiplatform.user` a service account do servico e configura:
 
@@ -146,6 +151,19 @@ gcloud projects add-iam-policy-binding "$PROJECT_ID" \
   --role="roles/secretmanager.secretAccessor"
 ```
 
+Para afiliados, configura apenas os programas em que ja tens conta aprovada. Exemplos:
+
+```bash
+gcloud secrets create EBAY_AFFILIATE_CAMPAIGN_ID --data-file=-
+gcloud secrets create AMAZON_ASSOCIATE_TAG --data-file=-
+```
+
+Depois adiciona ao deploy:
+
+```bash
+--set-secrets SERPAPI_API_KEY=SERPAPI_API_KEY:latest,EBAY_AFFILIATE_CAMPAIGN_ID=EBAY_AFFILIATE_CAMPAIGN_ID:latest,AMAZON_ASSOCIATE_TAG=AMAZON_ASSOCIATE_TAG:latest
+```
+
 ## Endpoints principais do backend
 
 - `GET /health`
@@ -153,6 +171,13 @@ gcloud projects add-iam-policy-binding "$PROJECT_ID" \
 - `POST /product-identifications/image`
 - `PATCH /product-identifications/:id/confirm`
 - `POST /searches/offers`
+
+Resposta de pesquisa:
+
+- `results`: lista plana compativel com a app atual, ordenada por menor preco.
+- `groups.exact`: produtos classificados como correspondencia exata.
+- `groups.similar`: produtos semelhantes, mas nao garantidos como o mesmo produto.
+- `affiliateUrl`: link de compra afiliado quando houver adapter configurado.
 - `GET /user-data`
 - `POST /user-data`
 - `PATCH /user-data/:id`
