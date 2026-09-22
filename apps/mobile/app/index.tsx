@@ -1,670 +1,91 @@
 import { Ionicons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as ImagePicker from "expo-image-picker";
 import { getOfferBadge, rankOffers, type NormalizedOffer, type ProductIdentification } from "@pricelens/shared";
-import { useCallback, useMemo, useState } from "react";
-import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, useColorScheme, useWindowDimensions, View } from "react-native";
+import { useEffect, useMemo, useState } from "react";
+import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, useColorScheme, View } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { currentIdToken, useAuth } from "../src/auth";
+import { detectLanguage, languages, translator, type Language } from "../src/i18n";
 
 type Screen = "home" | "results" | "saved" | "plans" | "profile";
-type SavedItem = { id: string; kind: "favorite" | "history" | "alert"; title: string; subtitle: string; createdAt: string; offer?: NormalizedOffer };
-type AppNotice = { title: string; message: string; tone: "success" | "warning" | "error" };
+type Appearance = "light" | "dark" | "system";
+type Market = "PT" | "US" | "GB" | "FR" | "DE";
+type SavedKind = "favorite" | "alert" | "history";
+type SavedItem = { id:string; kind:SavedKind; title:string; subtitle:string; offer?:NormalizedOffer; imageUri?:string; alertPrice?:number };
+type Notice = { title:string; message:string; tone:"success"|"warning"|"error" };
+type T = ReturnType<typeof translator>;
 
-const DEFAULT_API_BASE_URL = "https://pricelens-api-44ftuum65a-ew.a.run.app";
-const API_BASE_URL = (process.env.EXPO_PUBLIC_API_BASE_URL ?? DEFAULT_API_BASE_URL).replace(/\/$/, "");
+const API = (process.env.EXPO_PUBLIC_API_BASE_URL ?? "https://pricelens-api-44ftuum65a-ew.a.run.app").replace(/\/$/, "");
+const markets: Record<Market,{label:string;currency:string}> = { PT:{label:"Portugal",currency:"EUR"}, US:{label:"United States",currency:"USD"}, GB:{label:"United Kingdom",currency:"GBP"}, FR:{label:"France",currency:"EUR"}, DE:{label:"Deutschland",currency:"EUR"} };
+const emptyId: ProductIdentification = { id:"pending", sourceType:"text", name:"", visibleFeatures:[], confidence:0, createdAt:new Date(0).toISOString() };
+const light = { bg:"#F7F8FA", surface:"#FFFFFF", elevated:"#F1F4F8", ink:"#172033", muted:"#647084", subtle:"#929BAB", line:"#DDE2EA", primary:"#5278E8", primaryStrong:"#3158C8", primarySoft:"#EDF2FF", success:"#087F5B", successSoft:"#E9F8F1", warning:"#99620A", warningSoft:"#FFF6DA", danger:"#C24132", dangerSoft:"#FFF0EC" };
+const dark: typeof light = { bg:"#101827", surface:"#1C2940", elevated:"#24334D", ink:"#F7F9FC", muted:"#B7C1D1", subtle:"#8C9AB0", line:"#34445E", primary:"#83A3FF", primaryStrong:"#A8BEFF", primarySoft:"#263B6A", success:"#66D6AE", successSoft:"#183A30", warning:"#F0C15B", warningSoft:"#3A3018", danger:"#FF9B8D", dangerSoft:"#451E1B" };
+type Theme = typeof light;
 
-const emptyIdentification: ProductIdentification = {
-  id: "pending",
-  sourceType: "text",
-  name: "",
-  visibleFeatures: [],
-  confidence: 0,
-  createdAt: new Date(0).toISOString()
-};
-
-const lightTheme = {
-  bg: "#f7f5f0",
-  surface: "#ffffff",
-  elevated: "#fbfaf7",
-  ink: "#111827",
-  muted: "#687385",
-  subtle: "#8b95a5",
-  line: "#e4e0d7",
-  primary: "#214ee6",
-  primaryStrong: "#1739ae",
-  primarySoft: "#eef2ff",
-  success: "#087f5b",
-  successSoft: "#e9f8f1",
-  warning: "#a16207",
-  warningSoft: "#fff7df",
-  danger: "#c24132",
-  dangerSoft: "#fff0ec",
-  navy: "#16253f"
-};
-
-const darkTheme = {
-  bg: "#0f172a",
-  surface: "#111c31",
-  elevated: "#17243b",
-  ink: "#f8fafc",
-  muted: "#b7c0ce",
-  subtle: "#8fa0b6",
-  line: "#2d3a50",
-  primary: "#7da2ff",
-  primaryStrong: "#a9c0ff",
-  primarySoft: "#162850",
-  success: "#66d6ae",
-  successSoft: "#123126",
-  warning: "#f0c15b",
-  warningSoft: "#35290e",
-  danger: "#ff9b8d",
-  dangerSoft: "#3d1714",
-  navy: "#0b1220"
-};
-
-type Theme = typeof lightTheme;
-
-export default function HomeScreen() {
-  const scheme = useColorScheme();
-  const theme = scheme === "dark" ? darkTheme : lightTheme;
-  const styles = useMemo(() => createStyles(theme), [theme]);
-  const insets = useSafeAreaInsets();
-  const { width } = useWindowDimensions();
-
-  const [screen, setScreen] = useState<Screen>("home");
-  const [identification, setIdentification] = useState<ProductIdentification>(emptyIdentification);
-  const [productName, setProductName] = useState("");
-  const [model, setModel] = useState("");
-  const [category, setCategory] = useState("");
-  const [imageUri, setImageUri] = useState("");
-  const [offers, setOffers] = useState<NormalizedOffer[]>([]);
-  const [savedItems, setSavedItems] = useState<SavedItem[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [notice, setNotice] = useState<AppNotice>({ title: "Pronto", message: "Analisa um produto para comparar ofertas.", tone: "success" });
-  const [confirmOpen, setConfirmOpen] = useState(false);
-  const [notifications, setNotifications] = useState(false);
-
-  const isCompact = width < 380;
-  const rankedOffers = useMemo(() => rankOffers(offers), [offers]);
-  const favorites = savedItems.filter((item) => item.kind === "favorite");
-  const history = savedItems.filter((item) => item.kind === "history");
-  const alerts = savedItems.filter((item) => item.kind === "alert");
-
-  const remember = useCallback((kind: SavedItem["kind"], title: string, subtitle: string, offer?: NormalizedOffer) => {
-    const item: SavedItem = { id: `${kind}_${offer?.id ?? Date.now()}`, kind, title, subtitle, offer, createdAt: new Date().toISOString() };
-    setSavedItems((items) => [item, ...items.filter((existing) => existing.id !== item.id)]);
-  }, []);
-
-  async function pickFromCamera() {
-    const permission = await ImagePicker.requestCameraPermissionsAsync();
-    if (!permission.granted) {
-      setNotice({ title: "Permissão necessária", message: "Ativa a câmara para analisar produtos por fotografia.", tone: "warning" });
-      return;
-    }
-    const result = await ImagePicker.launchCameraAsync({ base64: true, quality: 0.82, allowsEditing: false });
-    await handleImageResult(result);
-  }
-
-  async function pickFromGallery() {
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      setNotice({ title: "Permissão necessária", message: "Ativa o acesso às fotografias para escolher uma imagem.", tone: "warning" });
-      return;
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({ base64: true, quality: 0.82, allowsEditing: false, mediaTypes: ImagePicker.MediaTypeOptions.Images });
-    await handleImageResult(result);
-  }
-
-  async function handleImageResult(result: ImagePicker.ImagePickerResult) {
-    if (result.canceled || !result.assets[0]) return;
-    const asset = result.assets[0];
-    setImageUri(asset.uri);
-    setLoading(true);
-    setNotice({ title: "A analisar", message: "A identificar produto com a API configurada.", tone: "success" });
-    try {
-      if (!asset.base64) {
-        throw new Error("A fotografia não trouxe dados suficientes para análise.");
-      }
-
-      const next = await api<ProductIdentification>("/product-identifications/image", { imageBase64: asset.base64, mimeType: asset.mimeType ?? "image/jpeg", country: "PT", currency: "EUR" });
-      if (!hasUsefulIdentification(next)) {
-        setIdentification({ ...emptyIdentification, sourceType: "image", imageUrl: asset.uri, createdAt: new Date().toISOString() });
-        setProductName("");
-        setModel("");
-        setCategory("");
-        setOffers([]);
-        setNotice({ title: "Produto não identificado", message: "A API respondeu, mas não devolveu nome, marca ou modelo suficientes. Tenta outra foto com a embalagem mais nítida.", tone: "warning" });
-        return;
-      }
-      applyIdentification(next);
-      remember("history", next.name, "Identificado por imagem");
-      setConfirmOpen(true);
-    } catch (error) {
-      setIdentification({ ...emptyIdentification, sourceType: "image", imageUrl: asset.uri, createdAt: new Date().toISOString() });
-      setOffers([]);
-      setNotice({ title: "API indisponível", message: error instanceof Error ? error.message : "Não consegui ligar à API de identificação. Confirma o deploy e tenta novamente.", tone: "error" });
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function identifyFromText() {
-    const query = productName.trim();
-    if (!query) {
-      setNotice({ title: "Pesquisa vazia", message: "Escreve o nome, marca ou modelo para pesquisar manualmente.", tone: "warning" });
-      return;
-    }
-    setLoading(true);
-    setNotice({ title: "A pesquisar", message: "A preparar a comparação do produto.", tone: "success" });
-    try {
-      const next = await api<ProductIdentification>("/product-identifications/text", { query, country: "PT", currency: "EUR" });
-      applyIdentification(next);
-      remember("history", next.name || query, "Pesquisa por texto");
-      setConfirmOpen(true);
-    } catch (error) {
-      applyIdentification({ ...emptyIdentification, id: `manual_${Date.now()}`, name: query, model, category, sourceType: "text", confidence: 0, createdAt: new Date().toISOString() });
-      setNotice({ title: "Pesquisa manual", message: error instanceof Error ? `A API não respondeu: ${error.message}` : "A API não respondeu. Podes ajustar os campos e tentar comparar.", tone: "warning" });
-      setConfirmOpen(true);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function compareOffers() {
-    setConfirmOpen(false);
-    setLoading(true);
-    setScreen("results");
-    setNotice({ title: "A comparar", message: "A ordenar ofertas por preço total e confiança.", tone: "success" });
-    try {
-      const response = await api<{ results: NormalizedOffer[] }>("/searches/offers", { query: productName, model, category, country: "PT", currency: "EUR", condition: "any", maxPrice: 1500, freeShippingOnly: false });
-      setOffers(response.results);
-      setNotice({ title: "Resultados prontos", message: response.results.length > 0 ? `${response.results.length} ofertas encontradas para comparar.` : "A API não encontrou ofertas reais para este produto.", tone: response.results.length > 0 ? "success" : "warning" });
-    } catch (error) {
-      setOffers([]);
-      setNotice({ title: "Sem ofertas reais", message: error instanceof Error ? error.message : "A API de preços não respondeu. Tenta novamente depois do deploy.", tone: "error" });
-    } finally {
-      setLoading(false);
-    }
-  }
-
-function applyIdentification(next: ProductIdentification) {
-    setIdentification(next);
-    setProductName(next.name);
-    setModel(next.model ?? "");
-    setCategory(next.category ?? "");
-  }
-
-  function saveFavorite(offer: NormalizedOffer) {
-    remember("favorite", offer.title, `${offer.storeName} · ${offer.totalPrice.toFixed(2)} ${offer.currency}`, offer);
-    setNotice({ title: "Guardado", message: "Oferta adicionada aos favoritos.", tone: "success" });
-  }
-
-  function createAlert(offer: NormalizedOffer) {
-    remember("alert", offer.title, `Avisar abaixo de ${(offer.totalPrice - 25).toFixed(2)} ${offer.currency}`, offer);
-    setNotice({ title: "Alerta criado", message: "Guardámos um objetivo de preço para esta oferta.", tone: "success" });
-  }
-
-  return (
-    <SafeAreaView style={styles.safeArea}>
-      <KeyboardAvoidingView style={styles.keyboard} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-        <View style={styles.shell}>
-          <Header styles={styles} theme={theme} />
-          <ScrollView contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 104 }]} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-            {screen === "home" && <HomeView styles={styles} theme={theme} isCompact={isCompact} productName={productName} setProductName={setProductName} imageUri={imageUri} confidence={identification.confidence} loading={loading} notice={notice} onCamera={pickFromCamera} onGallery={pickFromGallery} onSearch={identifyFromText} />}
-            {screen === "results" && <ResultsView styles={styles} theme={theme} productName={productName} model={model} category={category} offers={rankedOffers} loading={loading} notice={notice} onFavorite={saveFavorite} onAlert={createAlert} />}
-            {screen === "saved" && <SavedView styles={styles} favorites={favorites} history={history} alerts={alerts} />}
-            {screen === "plans" && <PlansView styles={styles} theme={theme} />}
-            {screen === "profile" && <ProfileView styles={styles} theme={theme} notifications={notifications} setNotifications={setNotifications} />}
-          </ScrollView>
-          <BottomTabs styles={styles} theme={theme} active={screen} onChange={setScreen} />
-          <ConfirmSheet styles={styles} theme={theme} visible={confirmOpen} productName={productName} setProductName={setProductName} model={model} setModel={setModel} category={category} setCategory={setCategory} identification={identification} imageUri={imageUri} onClose={() => setConfirmOpen(false)} onCompare={compareOffers} />
-        </View>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
-  );
+export default function PriceLens() {
+  const system = useColorScheme(); const insets = useSafeAreaInsets();
+  const [language,setLanguageRaw]=useState<Language>(detectLanguage()); const [appearance,setAppearanceRaw]=useState<Appearance>("light");
+  const [market,setMarketRaw]=useState<Market>("PT");
+  const [screen,setScreen]=useState<Screen>("home"); const [id,setId]=useState<ProductIdentification>(emptyId);
+  const [name,setName]=useState(""); const [brand,setBrand]=useState(""); const [model,setModel]=useState(""); const [category,setCategory]=useState(""); const [image,setImage]=useState("");
+  const [offers,setOffers]=useState<NormalizedOffer[]>([]); const [saved,setSaved]=useState<SavedItem[]>([]); const [loading,setLoading]=useState(false); const [confirm,setConfirm]=useState(false); const [detail,setDetail]=useState<SavedItem|null>(null); const [notifications,setNotifications]=useState(false);
+  const t=useMemo(()=>translator(language),[language]); const theme=appearance==="dark"||(appearance==="system"&&system==="dark")?dark:light; const s=useMemo(()=>styles(theme),[theme]);
+  const [notice,setNotice]=useState<Notice>({title:t("ready"),message:t("readyText"),tone:"success"}); const ranked=useMemo(()=>rankOffers(offers),[offers]);
+  useEffect(()=>{void(async()=>{const [l,a,m]=await Promise.all([AsyncStorage.getItem("pricelens.language"),AsyncStorage.getItem("pricelens.appearance"),AsyncStorage.getItem("pricelens.market")]);if(languages.some(x=>x.code===l))setLanguageRaw(l as Language);if(["light","dark","system"].includes(a??""))setAppearanceRaw(a as Appearance);if(m&&m in markets)setMarketRaw(m as Market)})()},[]);
+  const setLanguage=(v:Language)=>{setLanguageRaw(v);void AsyncStorage.setItem("pricelens.language",v)}; const setAppearance=(v:Appearance)=>{setAppearanceRaw(v);void AsyncStorage.setItem("pricelens.appearance",v)};
+  const setMarket=(v:Market)=>{setMarketRaw(v);void AsyncStorage.setItem("pricelens.market",v)};
+  const money=(n:number,c="EUR")=>new Intl.NumberFormat(language==="pt"?"pt-PT":language,{style:"currency",currency:c}).format(n);
+  const remember=(kind:SavedKind,title:string,subtitle:string,offer?:NormalizedOffer,alertPrice?:number)=>setSaved(items=>[{id:`${kind}_${offer?.id??Date.now()}`,kind,title,subtitle,offer,imageUri:offer?.imageUrl??image,alertPrice},...items.filter(x=>x.id!==`${kind}_${offer?.id??""}`)]);
+  const apply=(x:ProductIdentification)=>{setId(x);setName(x.name);setBrand(x.brand??"");setModel(x.model??"");setCategory(x.category??"")};
+  async function choose(source:"camera"|"gallery") { const permission=source==="camera"?await ImagePicker.requestCameraPermissionsAsync():await ImagePicker.requestMediaLibraryPermissionsAsync(); if(!permission.granted){setNotice({title:t("permission"),message:t(source==="camera"?"cameraPermission":"photoPermission"),tone:"warning"});return} const result=source==="camera"?await ImagePicker.launchCameraAsync({base64:true,quality:.82}):await ImagePicker.launchImageLibraryAsync({base64:true,quality:.82,mediaTypes:ImagePicker.MediaTypeOptions.Images}); if(result.canceled||!result.assets[0])return; const asset=result.assets[0];setImage(asset.uri);setLoading(true);try{if(!asset.base64)throw 0;const x=await request<ProductIdentification>("/product-identifications/image",{imageBase64:asset.base64,mimeType:asset.mimeType??"image/jpeg",country:"PT",currency:"EUR"});if(!identified(x)){setId({...emptyId,sourceType:"image"});setOffers([]);setNotice({title:t("notIdentified"),message:t("noOffersHelp"),tone:"warning"});setScreen("results");return}apply(x);remember("history",x.name,t("imageAnalysis"));setConfirm(true)}catch{setNotice({title:t("apiUnavailable"),message:t("tryPhoto"),tone:"error"})}finally{setLoading(false)}}
+  async function textSearch(){const q=name.trim();if(!q){setNotice({title:t("searchByName"),message:t("emptySearch"),tone:"warning"});return}setLoading(true);try{const x=await request<ProductIdentification>("/product-identifications/text",{query:q,country:"PT",currency:"EUR"});apply(x);remember("history",x.name||q,t("textCompare"));setConfirm(true)}catch{apply({...emptyId,id:`manual_${Date.now()}`,name:q,model,category,createdAt:new Date().toISOString()});setConfirm(true)}finally{setLoading(false)}}
+  async function compare(){setConfirm(false);setScreen("results");setLoading(true);try{const r=await request<{results:NormalizedOffer[]}>("/searches/offers",{query:name,brand,model,category,country:"PT",currency:"EUR",condition:"any",maxPrice:1500,freeShippingOnly:false});setOffers(r.results);setNotice({title:r.results.length?`${r.results.length} ${t("offersFound")}`:t("noOffers"),message:r.results.length?t("bestPrice"):t("noOffersHelp"),tone:r.results.length?"success":"warning"})}catch{setOffers([]);setNotice({title:t("apiUnavailable"),message:t("noOffersHelp"),tone:"error"})}finally{setLoading(false)}}
+  const favorite=(o:NormalizedOffer)=>{remember("favorite",o.title,`${o.storeName} · ${money(o.totalPrice,o.currency)}`,o);setNotice({title:t("save"),message:t("savedNotice"),tone:"success"})};
+  const alert=(o:NormalizedOffer)=>{const target=Math.max(0,o.totalPrice-25);remember("alert",o.title,`${t("targetPrice")}: ${money(target,o.currency)}`,o,target);setNotice({title:t("createAlert"),message:t("alertNotice"),tone:"success"})};
+  return <SafeAreaView style={s.safe} edges={["top","left","right"]}><KeyboardAvoidingView style={s.fill} behavior={Platform.OS==="ios"?"padding":undefined}><Header s={s} theme={theme} t={t}/><ScrollView style={s.fill} contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
+    {screen==="home"&&<Home s={s} theme={theme} t={t} name={name} setName={setName} image={image} loading={loading} camera={()=>void choose("camera")} gallery={()=>void choose("gallery")} search={()=>void textSearch()}/>} 
+    {screen==="results"&&<Results s={s} theme={theme} t={t} name={name} model={model} category={category} image={image} identified={identified(id)} offers={ranked} loading={loading} notice={notice} money={money} favorite={favorite} alert={alert} home={()=>setScreen("home")} photo={()=>void choose("camera")} open={o=>setDetail({id:`r_${o.id}`,kind:"history",title:o.title,subtitle:o.storeName,offer:o,imageUri:o.imageUrl})}/>} 
+    {screen==="saved"&&<Saved s={s} theme={theme} t={t} items={saved} open={setDetail}/>} {screen==="plans"&&<Plans s={s} theme={theme} t={t}/>} {screen==="profile"&&<Profile s={s} theme={theme} t={t} language={language} setLanguage={setLanguage} appearance={appearance} setAppearance={setAppearance} notifications={notifications} setNotifications={setNotifications}/>}</ScrollView>
+    <Tabs s={s} theme={theme} t={t} active={screen} change={setScreen} bottom={Math.max(insets.bottom,10)}/>
+    <Confirm s={s} theme={theme} t={t} visible={confirm} bottom={Math.max(insets.bottom,16)} name={name} setName={setName} brand={brand} setBrand={setBrand} model={model} setModel={setModel} category={category} setCategory={setCategory} image={image} close={()=>setConfirm(false)} compare={()=>void compare()}/>
+    <Product s={s} theme={theme} t={t} item={detail} offers={ranked} money={money} bottom={Math.max(insets.bottom,16)} close={()=>setDetail(null)} favorite={favorite} alert={alert}/>
+  </KeyboardAvoidingView></SafeAreaView>
 }
 
-async function api<T>(path: string, body: unknown): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-  if (!response.ok) throw new Error(`API ${path} falhou com estado ${response.status}`);
-  return response.json() as Promise<T>;
-}
+async function request<T>(path:string,body:unknown){const token=await currentIdToken();const r=await fetch(`${API}${path}`,{method:"POST",headers:{"Content-Type":"application/json",...(token?{Authorization:`Bearer ${token}`}:{})},body:JSON.stringify(body)});if(!r.ok)throw new Error(String(r.status));return r.json() as Promise<T>}
+const identified=(x:ProductIdentification)=>Boolean(x.name?.trim()||x.brand?.trim()||x.model?.trim());
+type C={s:ReturnType<typeof styles>;theme:Theme;t:T};
+function Header({s,theme,t}:C){return <View style={s.header}><View style={s.brandWrap}><View style={s.logo}><Ionicons name="search" size={19} color="#fff"/></View><View><Text style={s.brand}>PriceLens</Text><Text style={s.brandSub}>{t("tagline")}</Text></View></View><View style={s.trust}><Ionicons name="shield-checkmark-outline" size={21} color={theme.primaryStrong}/></View></View>}
+function Home(p:C&{name:string;setName:(v:string)=>void;image:string;loading:boolean;camera:()=>void;gallery:()=>void;search:()=>void}){return <View style={p.s.stack}><View><Text style={p.s.hero}>{p.t("hero")}</Text><Text style={p.s.heroText}>{p.t("heroText")}</Text></View><View style={p.s.row}><Button {...p} label={p.loading?p.t("analysing"):p.t("takePhoto")} icon="camera-outline" loading={p.loading} onPress={p.camera}/><Button {...p} label={p.t("choosePhoto")} icon="images-outline" secondary onPress={p.gallery}/></View><Pressable style={p.s.scanner} onPress={p.camera}>{p.image?<Image source={{uri:p.image}} style={p.s.scannerImage}/>:<View style={p.s.scannerEmpty}><Ionicons name="scan-outline" size={52} color={p.theme.primary}/></View>}<View style={p.s.scanFrame}><View style={p.s.scanLine}/></View><Text style={p.s.scanHint}>{p.t("scannerHint")}</Text></Pressable><Text style={p.s.label}>{p.t("searchByName")}</Text><View style={p.s.searchRow}><View style={p.s.searchInput}><Ionicons name="search" size={18} color={p.theme.muted}/><TextInput style={p.s.input} value={p.name} onChangeText={p.setName} placeholder={p.t("searchPlaceholder")} placeholderTextColor={p.theme.subtle} onSubmitEditing={p.search}/></View><Pressable style={p.s.searchButton} onPress={p.search}><Ionicons name="arrow-forward" size={21} color="#fff"/></Pressable></View></View>}
+function Results(p:C&{name:string;model:string;category:string;image:string;identified:boolean;offers:NormalizedOffer[];loading:boolean;notice:Notice;money:(n:number,c?:string)=>string;favorite:(o:NormalizedOffer)=>void;alert:(o:NormalizedOffer)=>void;home:()=>void;photo:()=>void;open:(o:NormalizedOffer)=>void}){const best=p.offers[0];return <View style={p.s.stack}><Text style={p.s.eyebrow}>{p.t("results")}</Text><View style={p.s.productHero}>{p.image?<Image source={{uri:p.image}} style={p.s.productImage}/>:<View style={p.s.productEmpty}><Ionicons name="cube-outline" size={26} color={p.theme.primary}/></View>}<View style={p.s.flex}><Text style={p.s.title}>{p.name||p.t("notIdentified")}</Text><Text style={p.s.muted}>{[p.model,p.category,"Portugal · EUR"].filter(Boolean).join(" · ")}</Text>{best&&<><Text style={p.s.bestLabel}>{p.t("bestPrice")}</Text><Text style={p.s.best}>{p.money(best.totalPrice,best.currency)}</Text></>}</View></View><NoticeBox {...p} notice={p.notice}/><View style={p.s.chips}><Chip {...p} text={p.t("all")} active/><Chip {...p} text={p.t("new")}/><Chip {...p} text={p.t("freeShipping")}/></View>{p.loading?<Empty {...p} loading title={p.t("loadingOffers")} text={p.t("wait")}/>:!p.offers.length?<Empty {...p} title={p.identified?p.t("noOffers"):p.t("notIdentified")} text={p.t("noOffersHelp")} actions={<View style={p.s.row}><Button {...p} label={p.t("changeSearch")} icon="create-outline" secondary onPress={p.home}/><Button {...p} label={p.t("tryPhoto")} icon="camera-outline" onPress={p.photo}/></View>}/>:p.offers.map(o=><Offer key={o.id} {...p} offer={o} all={p.offers} open={()=>p.open(o)} save={()=>p.favorite(o)} alarm={()=>p.alert(o)}/>)}</View>}
+function Offer(p:C&{offer:NormalizedOffer;all:NormalizedOffer[];money:(n:number,c?:string)=>string;open?:()=>void;save:()=>void;alarm:()=>void}){const badge=getOfferBadge(p.offer,p.all);return <Pressable style={p.s.offer} onPress={p.open}><Image source={{uri:p.offer.imageUrl}} style={p.s.offerImage}/><View style={p.s.flex}><View style={p.s.chips}><Text style={p.offer.matchType==="exact"?p.s.exact:p.s.similar}>{p.offer.matchType==="exact"?p.t("exact"):p.t("similar")}</Text>{badge&&<Text style={p.s.badge}>{badge}</Text>}</View><Text style={p.s.offerTitle} numberOfLines={2}>{p.offer.title}</Text><Text style={p.s.muted}>{p.offer.storeName} · {p.offer.matchConfidence}%</Text><Text style={p.s.price}>{p.money(p.offer.totalPrice,p.offer.currency)}</Text><Text style={p.s.shipping}>{p.offer.shippingPrice===0?p.t("shippingIncluded"):`+ ${p.money(p.offer.shippingPrice,p.offer.currency)} ${p.t("shipping")}`}</Text><View style={p.s.actions}><Pressable style={p.s.buy} onPress={()=>void Linking.openURL(p.offer.affiliateUrl??p.offer.productUrl)}><Text style={p.s.buyText}>{p.t("buy")}</Text></Pressable><Icon {...p} name="bookmark-outline" label={p.t("save")} action={p.save}/><Icon {...p} name="notifications-outline" label={p.t("createAlert")} action={p.alarm}/></View></View></Pressable>}
+function Saved(p:C&{items:SavedItem[];open:(x:SavedItem)=>void}){const [tab,setTab]=useState<SavedKind>("favorite");const tabs:[SavedKind,string][]=[["favorite",p.t("favorites")],["alert",p.t("alerts")],["history",p.t("history")]];const items=p.items.filter(x=>x.kind===tab);const none=tab==="favorite"?p.t("noFavorites"):tab==="alert"?p.t("noAlerts"):p.t("noHistory");return <View style={p.s.stack}><Text style={p.s.eyebrow}>{p.t("saved")}</Text><Text style={p.s.title}>{p.t("savedTitle")}</Text><View style={p.s.segments}>{tabs.map(([k,l])=><Pressable key={k} style={[p.s.segment,tab===k&&p.s.segmentOn]} onPress={()=>setTab(k)}><Text style={[p.s.segmentText,tab===k&&p.s.segmentTextOn]}>{l}</Text></Pressable>)}</View>{!items.length?<Empty {...p} title={none} text=""/>:<View>{items.map(x=><Pressable key={x.id} style={p.s.savedRow} onPress={()=>p.open(x)}>{x.imageUri?<Image source={{uri:x.imageUri}} style={p.s.savedImage}/>:<View style={p.s.savedEmpty}><Ionicons name="cube-outline" size={20} color={p.theme.primary}/></View>}<View style={p.s.flex}><Text style={p.s.savedTitle} numberOfLines={2}>{x.title}</Text><Text style={p.s.muted} numberOfLines={2}>{x.subtitle}</Text></View><Ionicons name="chevron-forward" size={20} color={p.theme.subtle}/></Pressable>)}</View>}</View>}
+function Plans(p:C){return <View style={p.s.stack}><Text style={p.s.eyebrow}>{p.t("plans")}</Text><Text style={p.s.title}>{p.t("plansTitle")}</Text><Plan {...p} title="Starter" price={p.t("free")} tag={p.t("included")} features={[p.t("textCompare"),p.t("imageAnalysis"),p.t("basicHistory")]}/><Plan {...p} title="Premium" price={p.t("pricePending")} tag={p.t("recommended")} features={[p.t("priceAlerts"),p.t("advancedPrefs"),p.t("fasterShopping")]} featured/><NoticeBox {...p} notice={{title:p.t("plans"),message:p.t("planText"),tone:"warning"}}/></View>}
+function Plan(p:C&{title:string;price:string;tag:string;features:string[];featured?:boolean}){return <View style={[p.s.plan,p.featured&&p.s.planFeatured]}><View style={p.s.planHead}><View><Text style={p.s.planTitle}>{p.title}</Text><Text style={p.s.planPrice}>{p.price}</Text></View><Text style={p.s.badge}>{p.tag}</Text></View>{p.features.map(x=><View key={x} style={p.s.feature}><Ionicons name="checkmark-circle" size={19} color={p.theme.success}/><Text style={p.s.featureText}>{x}</Text></View>)}<Button {...p} label={p.featured?p.t("viewPremium"):p.t("start")} icon="arrow-forward" secondary={!p.featured} onPress={()=>Alert.alert(p.t("plans"),p.t("purchaseUnavailable"))}/></View>}
+function Profile(p:C&{language:Language;setLanguage:(v:Language)=>void;appearance:Appearance;setAppearance:(v:Appearance)=>void;notifications:boolean;setNotifications:(v:boolean)=>void}){const auth=useAuth();return <View style={p.s.stack}><Text style={p.s.eyebrow}>{p.t("profile")}</Text><Text style={p.s.title}>{auth.user?p.t("account"):p.t("signIn")}</Text><View style={p.s.settings}>{auth.user?<><Text style={p.s.savedTitle}>{auth.user.displayName||p.t("account")}</Text><Text style={p.s.muted}>{auth.user.email}</Text><Button {...p} label={p.t("signOut")} icon="log-out-outline" secondary loading={auth.busy} onPress={()=>void auth.signOut()}/></>:<><Text style={p.s.muted}>{p.t("accountSync")}</Text><Button {...p} label={p.t("google")} icon="logo-google" secondary loading={auth.busy} onPress={()=>void auth.signInWithGoogle()}/>{auth.appleAvailable&&<Button {...p} label={p.t("apple")} icon="logo-apple" secondary loading={auth.busy} onPress={()=>void auth.signInWithApple()}/>}</>}</View><Text style={p.s.subhead}>{p.t("language")}</Text><Options s={p.s} value={p.language} options={languages.map(x=>[x.code,x.label])} change={v=>p.setLanguage(v as Language)}/><Text style={p.s.subhead}>{p.t("appearance")}</Text><Options s={p.s} value={p.appearance} options={[["light",p.t("light")],["dark",p.t("dark")],["system",p.t("system")]]} change={v=>p.setAppearance(v as Appearance)}/><View style={p.s.settingRow}><View style={p.s.flex}><Text style={p.s.savedTitle}>{p.t("notifications")}</Text><Text style={p.s.muted}>{p.t("notificationText")}</Text></View><Switch value={p.notifications} onValueChange={p.setNotifications}/></View><View style={p.s.settingRow}><View><Text style={p.s.savedTitle}>{p.t("country")}</Text><Text style={p.s.muted}>Portugal · EUR</Text></View></View></View>}
+function Confirm(p:C&{visible:boolean;bottom:number;name:string;setName:(v:string)=>void;brand:string;setBrand:(v:string)=>void;model:string;setModel:(v:string)=>void;category:string;setCategory:(v:string)=>void;image:string;close:()=>void;compare:()=>void}){const [edit,setEdit]=useState(false);return <Modal visible={p.visible} transparent animationType="slide" onRequestClose={p.close}><View style={p.s.backdrop}><View style={p.s.sheet}><View style={p.s.handle}/><View style={p.s.sheetHead}><View><Text style={p.s.eyebrow}>{p.t("confirmation")}</Text><Text style={p.s.sheetTitle}>{p.t("confirmProduct")}</Text></View><Icon {...p} name="close" label={p.t("close")} action={p.close}/></View><ScrollView contentContainerStyle={p.s.sheetBody}>{p.image&&<Image source={{uri:p.image}} style={p.s.sheetImage}/>} {edit?<><Field {...p} label={p.t("product")} value={p.name} change={p.setName}/><Field {...p} label={p.t("brandModel")} value={[p.brand,p.model].filter(Boolean).join(" ")} change={p.setModel}/><Field {...p} label={p.t("category")} value={p.category} change={p.setCategory}/></>:<View><Info s={p.s} label={p.t("product")} value={p.name}/><Info s={p.s} label={p.t("brandModel")} value={[p.brand,p.model].filter(Boolean).join(" ")||"—"}/><Info s={p.s} label={p.t("category")} value={p.category||"—"}/><Pressable onPress={()=>setEdit(true)}><Text style={p.s.edit}>{p.t("edit")}</Text></Pressable></View>}</ScrollView><View style={[p.s.sheetFoot,{paddingBottom:p.bottom}]}><Button {...p} label={p.t("comparePrices")} icon="checkmark-circle-outline" onPress={p.compare}/></View></View></View></Modal>}
+function Product(p:C&{item:SavedItem|null;offers:NormalizedOffer[];money:(n:number,c?:string)=>string;bottom:number;close:()=>void;favorite:(o:NormalizedOffer)=>void;alert:(o:NormalizedOffer)=>void}){if(!p.item)return null;const list=p.item.offer?[p.item.offer,...p.offers.filter(x=>x.id!==p.item?.offer?.id)]:p.offers;return <Modal visible animationType="slide" onRequestClose={p.close}><SafeAreaView style={p.s.safe}><View style={p.s.detailHead}><Icon {...p} name="arrow-back" label={p.t("back")} action={p.close}/><Text style={p.s.savedTitle}>{p.t("productDetails")}</Text><View style={{width:40}}/></View><ScrollView contentContainerStyle={[p.s.detail,{paddingBottom:p.bottom+24}]}>{p.item.imageUri&&<Image source={{uri:p.item.imageUri}} style={p.s.detailImage}/>}<Text style={p.s.title}>{p.item.title}</Text><Text style={p.s.muted}>{p.item.subtitle}</Text>{p.item.alertPrice!=null&&<View style={p.s.alertBox}><Text style={p.s.label}>{p.t("targetPrice")}</Text><Text style={p.s.planPrice}>{p.money(p.item.alertPrice,p.item.offer?.currency)}</Text><Text style={p.s.edit}>{p.t("editAlert")}</Text></View>}<Text style={p.s.subhead}>{p.t("availableOffers")}</Text>{list.length?list.map(o=><Offer key={o.id} {...p} offer={o} all={list} save={()=>p.favorite(o)} alarm={()=>p.alert(o)}/>):<Empty {...p} title={p.t("noOffers")} text={p.t("noOffersHelp")}/>}</ScrollView></SafeAreaView></Modal>}
+function Tabs(p:C&{active:Screen;change:(v:Screen)=>void;bottom:number}){const tabs:[Screen,string,keyof typeof Ionicons.glyphMap][]=[["home",p.t("home"),"scan-outline"],["results",p.t("results"),"pricetag-outline"],["saved",p.t("saved"),"bookmark-outline"],["plans",p.t("plans"),"diamond-outline"],["profile",p.t("profile"),"person-outline"]];return <View style={[p.s.tabs,{paddingBottom:p.bottom}]}>{tabs.map(([k,l,i])=><Pressable key={k} style={[p.s.tab,p.active===k&&p.s.tabOn]} onPress={()=>p.change(k)}><Ionicons name={i} size={20} color={p.active===k?p.theme.primaryStrong:p.theme.muted}/><Text style={[p.s.tabText,p.active===k&&p.s.tabTextOn]} numberOfLines={1} adjustsFontSizeToFit>{l}</Text></Pressable>)}</View>}
+function Button(p:C&{label:string;icon:keyof typeof Ionicons.glyphMap;secondary?:boolean;loading?:boolean;onPress:()=>void}){return <Pressable style={[p.s.button,p.secondary?p.s.buttonSecondary:p.s.buttonPrimary,p.loading&&{opacity:.6}]} onPress={p.loading?undefined:p.onPress}>{p.loading?<ActivityIndicator color={p.secondary?p.theme.primary:"#fff"}/>:<Ionicons name={p.icon} size={19} color={p.secondary?p.theme.ink:"#fff"}/>}<Text style={p.secondary?p.s.buttonTextSecondary:p.s.buttonText} numberOfLines={2}>{p.label}</Text></Pressable>}
+function Icon(p:C&{name:keyof typeof Ionicons.glyphMap;label:string;action:()=>void}){return <Pressable style={p.s.icon} onPress={p.action} accessibilityLabel={p.label}><Ionicons name={p.name} size={20} color={p.theme.ink}/></Pressable>}
+function NoticeBox(p:C&{notice:Notice}){return <View style={[p.s.notice,p.notice.tone==="warning"&&p.s.noticeWarn,p.notice.tone==="error"&&p.s.noticeError]}><Ionicons name={p.notice.tone==="success"?"checkmark-circle-outline":"information-circle-outline"} size={20} color={p.notice.tone==="success"?p.theme.success:p.notice.tone==="warning"?p.theme.warning:p.theme.danger}/><View style={p.s.flex}><Text style={p.s.savedTitle}>{p.notice.title}</Text><Text style={p.s.muted}>{p.notice.message}</Text></View></View>}
+function Empty(p:C&{title:string;text:string;loading?:boolean;actions?:React.ReactNode}){return <View style={p.s.empty}>{p.loading?<ActivityIndicator color={p.theme.primary}/>:<Ionicons name="search-outline" size={30} color={p.theme.primary}/>}<Text style={p.s.emptyTitle}>{p.title}</Text>{p.text&&<Text style={p.s.emptyText}>{p.text}</Text>}{p.actions}</View>}
+function Chip(p:C&{text:string;active?:boolean}){return <Text style={[p.s.chip,p.active&&p.s.chipOn]}>{p.text}</Text>}
+function Field(p:C&{label:string;value:string;change:(v:string)=>void}){return <View><Text style={p.s.label}>{p.label}</Text><TextInput style={p.s.field} value={p.value} onChangeText={p.change} placeholderTextColor={p.theme.subtle}/></View>}
+function Info({s,label,value}:{s:ReturnType<typeof styles>;label:string;value:string}){return <View style={s.info}><Text style={s.label}>{label}</Text><Text style={s.infoValue}>{value}</Text></View>}
+function Options({s,value,options,change}:{s:ReturnType<typeof styles>;value:string;options:string[][];change:(v:string)=>void}){return <View style={s.options}>{options.map(([v,l])=><Pressable key={v} style={[s.option,value===v&&s.optionOn]} onPress={()=>change(v)}><Text style={[s.optionText,value===v&&s.optionTextOn]}>{l}</Text></Pressable>)}</View>}
 
-function hasUsefulIdentification(identification: ProductIdentification) {
-  return Boolean(identification.name?.trim() || identification.brand?.trim() || identification.model?.trim());
-}
-
-function Header({ styles, theme }: { styles: ReturnType<typeof createStyles>; theme: Theme }) {
-  return (
-    <View style={styles.header}>
-      <View style={styles.brandWrap} accessible accessibilityRole="header" accessibilityLabel="PriceLens">
-        <View style={styles.logo}><Ionicons name="search" size={18} color="#fff" /></View>
-        <View>
-          <Text style={styles.brand}>PriceLens</Text>
-          <Text style={styles.brandSub}>Compra com clareza</Text>
-        </View>
-      </View>
-      <Pressable style={styles.headerIcon} accessibilityRole="button" accessibilityLabel="Segurança da conta">
-        <Ionicons name="shield-checkmark-outline" size={21} color={theme.ink} />
-      </Pressable>
-    </View>
-  );
-}
-
-function HomeView(props: { styles: ReturnType<typeof createStyles>; theme: Theme; isCompact: boolean; productName: string; setProductName: (value: string) => void; imageUri: string; confidence: number; loading: boolean; notice: AppNotice; onCamera: () => void; onGallery: () => void; onSearch: () => void }) {
-  const { styles, theme } = props;
-  return (
-    <View style={styles.stack}>
-      <Text style={styles.eyebrow}>Gemini + Google Vision</Text>
-      <Text style={[styles.heroTitle, props.isCompact && styles.heroTitleCompact]}>Encontra o melhor preço antes de comprar.</Text>
-      <Text style={styles.heroText}>Fotografa, confirma e compara ofertas por preço total, confiança da loja e correspondência do produto.</Text>
-      <ScannerCard styles={styles} theme={theme} imageUri={props.imageUri} confidence={props.confidence} onPress={props.onCamera} />
-      <View style={styles.actionGrid}>
-        <Button styles={styles} theme={theme} label={props.loading ? "A analisar" : "Usar câmara"} icon="camera-outline" variant="primary" loading={props.loading} onPress={props.onCamera} />
-        <Button styles={styles} theme={theme} label="Galeria" icon="image-outline" variant="secondary" onPress={props.onGallery} />
-      </View>
-      <View style={styles.searchCard}>
-        <Text style={styles.inputLabel}>Pesquisa manual</Text>
-        <View style={styles.searchInput}>
-          <Ionicons name="search-outline" size={20} color={theme.muted} />
-          <TextInput value={props.productName} onChangeText={props.setProductName} placeholder="Nome ou modelo" placeholderTextColor={theme.subtle} style={styles.input} returnKeyType="search" onSubmitEditing={props.onSearch} accessibilityLabel="Pesquisar produto por nome ou modelo" />
-        </View>
-        <Button styles={styles} theme={theme} label="Comparar este produto" icon="arrow-forward-outline" variant="primary" onPress={props.onSearch} />
-      </View>
-      <Notice styles={styles} theme={theme} notice={props.notice} />
-      <View style={styles.benefitGrid}>
-        <Benefit styles={styles} theme={theme} icon="receipt-outline" title="Preço total" text="Produto e envio no mesmo cálculo." />
-        <Benefit styles={styles} theme={theme} icon="shield-checkmark-outline" title="Confiança" text="Sinais de loja e compatibilidade visíveis." />
-        <Benefit styles={styles} theme={theme} icon="notifications-outline" title="Alertas" text="Guarda objetivos de preço para seguir depois." />
-      </View>
-    </View>
-  );
-}
-
-function ScannerCard({ styles, theme, imageUri, confidence, onPress }: { styles: ReturnType<typeof createStyles>; theme: Theme; imageUri: string; confidence?: number; onPress: () => void }) {
-  return (
-    <Pressable style={styles.scannerCard} onPress={onPress} accessibilityRole="button" accessibilityLabel="Abrir câmara para analisar produto">
-      {imageUri ? <Image source={{ uri: imageUri }} style={styles.heroImage as never} /> : <View style={styles.scannerEmpty}><Ionicons name="scan-outline" size={44} color="#fff" /></View>}
-      <View style={styles.scannerOverlay} />
-      <View style={styles.scannerTop}>
-        <Text style={styles.scannerLabel}>Scanner</Text>
-        <View style={styles.scannerPill}><Ionicons name="sparkles-outline" size={14} color={theme.ink} /><Text style={styles.scannerPillText}>{typeof confidence === "number" && confidence > 0 ? `IA ${confidence}%` : "IA pronta"}</Text></View>
-      </View>
-      <View style={styles.scanFrame}>
-        <View style={styles.scanCornerTop} />
-        <View style={styles.scanLine} />
-        <View style={styles.scanCornerBottom} />
-      </View>
-      <Text style={styles.scannerHint}>Alinha o produto no enquadramento</Text>
-    </Pressable>
-  );
-}
-
-function ResultsView({ styles, theme, productName, model, category, offers, loading, notice, onFavorite, onAlert }: { styles: ReturnType<typeof createStyles>; theme: Theme; productName: string; model: string; category: string; offers: NormalizedOffer[]; loading: boolean; notice: AppNotice; onFavorite: (offer: NormalizedOffer) => void; onAlert: (offer: NormalizedOffer) => void }) {
-  return (
-    <View style={styles.stack}>
-      <Text style={styles.eyebrow}>Resultados</Text>
-      <Text style={styles.sectionTitle}>{productName}</Text>
-      <Text style={styles.subtitle}>{[model, category, "Portugal", "EUR"].filter(Boolean).join(" · ")}</Text>
-      <Notice styles={styles} theme={theme} notice={notice} />
-      <View style={styles.filtersRow} accessibilityLabel="Filtros rápidos">
-        <Chip styles={styles} label="Todos" active />
-        <Chip styles={styles} label="Novo" />
-        <Chip styles={styles} label="Envio grátis" />
-      </View>
-      {loading ? <LoadingState styles={styles} theme={theme} /> : offers.length === 0 ? <EmptyState styles={styles} theme={theme} text="Ainda não há ofertas para este produto." /> : offers.map((offer) => <OfferCard key={offer.id} styles={styles} theme={theme} offer={offer} offers={offers} onFavorite={() => onFavorite(offer)} onAlert={() => onAlert(offer)} />)}
-    </View>
-  );
-}
-
-function OfferCard({ styles, theme, offer, offers, onFavorite, onAlert }: { styles: ReturnType<typeof createStyles>; theme: Theme; offer: NormalizedOffer; offers: NormalizedOffer[]; onFavorite: () => void; onAlert: () => void }) {
-  const badge = getOfferBadge(offer, offers);
-  const buyUrl = offer.affiliateUrl ?? offer.productUrl;
-  return (
-    <View style={styles.offerCard}>
-      <Image source={{ uri: offer.imageUrl }} style={styles.offerImage as never} />
-      <View style={styles.offerInfo}>
-        <View style={styles.badgeRow}>
-          <Text style={offer.matchType === "exact" ? styles.exactBadge : styles.similarBadge}>{offer.matchType === "exact" ? "Produto exato" : "Semelhante"}</Text>
-          {badge && <Text style={styles.badge}>{badge}</Text>}
-          {offer.affiliateUrl && <Text style={styles.affiliateBadge}>Afiliado</Text>}
-          {offer.isMock && <Text style={styles.mockBadge}>Demo</Text>}
-        </View>
-        <Text style={styles.offerTitle} numberOfLines={2}>{offer.title}</Text>
-        <Text style={styles.offerStore} numberOfLines={1}>{offer.storeName} · {offer.matchConfidence}% correspondência · Loja {offer.storeTrustScore}%</Text>
-        {offer.matchReason && <Text style={styles.matchReason} numberOfLines={2}>{offer.matchReason}</Text>}
-        <View style={styles.priceRow}>
-          <Text style={styles.price}>{offer.totalPrice.toFixed(2)} {offer.currency}</Text>
-          <Text style={styles.shipping}>{offer.shippingPrice === 0 ? "Envio grátis" : `+ ${offer.shippingPrice.toFixed(2)} envio`}</Text>
-        </View>
-        <View style={styles.rowActions}>
-          <Pressable style={styles.buyButton} onPress={() => Linking.openURL(buyUrl)} accessibilityRole="link" accessibilityLabel={`Comprar ${offer.title}`}>
-            <Text style={styles.buyButtonText}>Comprar</Text>
-          </Pressable>
-          <Pressable style={styles.iconAction} onPress={onFavorite} accessibilityRole="button" accessibilityLabel="Guardar oferta nos favoritos"><Ionicons name="heart-outline" size={19} color={theme.ink} /></Pressable>
-          <Pressable style={styles.iconAction} onPress={onAlert} accessibilityRole="button" accessibilityLabel="Criar alerta de preço"><Ionicons name="notifications-outline" size={19} color={theme.ink} /></Pressable>
-        </View>
-      </View>
-    </View>
-  );
-}
-
-function SavedView({ styles, favorites, history, alerts }: { styles: ReturnType<typeof createStyles>; favorites: SavedItem[]; history: SavedItem[]; alerts: SavedItem[] }) {
-  return (
-    <View style={styles.stack}>
-      <Text style={styles.eyebrow}>Área pessoal</Text>
-      <Text style={styles.sectionTitle}>Guardados e histórico</Text>
-      <SavedGroup styles={styles} title="Favoritos" items={favorites} empty="Ainda não guardaste ofertas." />
-      <SavedGroup styles={styles} title="Alertas" items={alerts} empty="Ainda não criaste alertas." />
-      <SavedGroup styles={styles} title="Histórico" items={history} empty="As pesquisas aparecem aqui." />
-    </View>
-  );
-}
-
-function SavedGroup({ styles, title, items, empty }: { styles: ReturnType<typeof createStyles>; title: string; items: SavedItem[]; empty: string }) {
-  return (
-    <View style={styles.groupCard}>
-      <Text style={styles.groupTitle}>{title}</Text>
-      {items.length === 0 ? <Text style={styles.emptyInline}>{empty}</Text> : items.map((item) => <View key={item.id} style={styles.savedRow}><Text style={styles.savedTitle}>{item.title}</Text><Text style={styles.savedSubtitle}>{item.subtitle}</Text></View>)}
-    </View>
-  );
-}
-
-function PlansView({ styles, theme }: { styles: ReturnType<typeof createStyles>; theme: Theme }) {
-  return (
-    <View style={styles.stack}>
-      <Text style={styles.eyebrow}>Planos</Text>
-      <Text style={styles.sectionTitle}>Valor claro antes da subscrição.</Text>
-      <PlanCard styles={styles} theme={theme} title="Starter" tag="Incluído" items={["Comparação por texto", "Análise por imagem", "Histórico básico"]} />
-      <PlanCard styles={styles} theme={theme} title="Premium" tag="Recomendado" featured items={["Alertas de preço", "Preferências avançadas", "Compras recorrentes mais rápidas"]} />
-      <Notice styles={styles} theme={theme} notice={{ title: "Transparência", message: "Os preços finais dos planos ainda não estão definidos nesta versão.", tone: "warning" }} />
-    </View>
-  );
-}
-
-function PlanCard({ styles, theme, title, tag, items, featured }: { styles: ReturnType<typeof createStyles>; theme: Theme; title: string; tag: string; items: string[]; featured?: boolean }) {
-  return (
-    <View style={[styles.planCard, featured && styles.planFeatured]}>
-      <View style={styles.planHeader}>
-        <Text style={styles.planTitle}>{title}</Text>
-        <Text style={featured ? styles.badge : styles.mockBadge}>{tag}</Text>
-      </View>
-      {items.map((item) => <View key={item} style={styles.planItem}><Ionicons name="checkmark-circle-outline" size={18} color={featured ? theme.primary : theme.success} /><Text style={styles.planText}>{item}</Text></View>)}
-      <Button styles={styles} theme={theme} label={featured ? "Ver Premium" : "Começar"} icon="arrow-forward-outline" variant={featured ? "primary" : "secondary"} onPress={() => Alert.alert("Plano", "Fluxo de subscrição ainda não está ligado a pagamentos.")} />
-    </View>
-  );
-}
-
-function ProfileView({ styles, theme, notifications, setNotifications }: { styles: ReturnType<typeof createStyles>; theme: Theme; notifications: boolean; setNotifications: (value: boolean) => void }) {
-  return (
-    <View style={styles.stack}>
-      <Text style={styles.eyebrow}>Perfil</Text>
-      <Text style={styles.sectionTitle}>Preferências de compra</Text>
-      <View style={styles.groupCard}>
-        <Field styles={styles} theme={theme} label="País" value="PT" onChangeText={() => undefined} />
-        <Field styles={styles} theme={theme} label="Moeda" value="EUR" onChangeText={() => undefined} />
-        <Field styles={styles} theme={theme} label="Idioma" value="pt-PT" onChangeText={() => undefined} />
-        <View style={styles.switchRow}>
-          <View style={styles.switchCopy}>
-            <Text style={styles.groupTitle}>Notificações</Text>
-            <Text style={styles.savedSubtitle}>Alertas de preço e atualizações importantes.</Text>
-          </View>
-          <Switch value={notifications} onValueChange={setNotifications} trackColor={{ false: theme.line, true: theme.primarySoft }} thumbColor={notifications ? theme.primary : theme.subtle} accessibilityLabel="Ativar notificações" />
-        </View>
-      </View>
-    </View>
-  );
-}
-
-function ConfirmSheet(props: { styles: ReturnType<typeof createStyles>; theme: Theme; visible: boolean; productName: string; setProductName: (value: string) => void; model: string; setModel: (value: string) => void; category: string; setCategory: (value: string) => void; identification: ProductIdentification; imageUri: string; onClose: () => void; onCompare: () => void }) {
-  const { styles, theme } = props;
-  return (
-    <Modal visible={props.visible} transparent animationType="slide" onRequestClose={props.onClose}>
-      <View style={styles.modalBackdrop}>
-        <View style={styles.sheet}>
-          <View style={styles.sheetHandle} />
-          <View style={styles.sheetHeader}>
-            <View>
-              <Text style={styles.eyebrow}>Confirmação</Text>
-              <Text style={styles.sheetTitle}>Confirma o produto</Text>
-            </View>
-            <Pressable style={styles.headerIcon} onPress={props.onClose} accessibilityRole="button" accessibilityLabel="Fechar confirmação"><Ionicons name="close-outline" size={24} color={theme.ink} /></Pressable>
-          </View>
-          {props.imageUri ? <Image source={{ uri: props.imageUri }} style={styles.sheetImage as never} /> : <View style={styles.sheetImageEmpty}><Ionicons name="cube-outline" size={34} color={theme.muted} /></View>}
-          <Field styles={styles} theme={theme} label="Nome do produto" value={props.productName} onChangeText={props.setProductName} />
-          <Field styles={styles} theme={theme} label="Modelo" value={props.model} onChangeText={props.setModel} />
-          <Field styles={styles} theme={theme} label="Categoria" value={props.category} onChangeText={props.setCategory} />
-          <View style={styles.chips}>{props.identification.visibleFeatures.map((feature) => <Text key={feature} style={styles.chip}>{feature}</Text>)}</View>
-          <Button styles={styles} theme={theme} label="Comparar preços" icon="checkmark-circle-outline" variant="primary" onPress={props.onCompare} />
-        </View>
-      </View>
-    </Modal>
-  );
-}
-
-function BottomTabs({ styles, theme, active, onChange }: { styles: ReturnType<typeof createStyles>; theme: Theme; active: Screen; onChange: (screen: Screen) => void }) {
-  const tabs: Array<{ screen: Screen; label: string; icon: keyof typeof Ionicons.glyphMap }> = [
-    { screen: "home", label: "Início", icon: "scan-outline" },
-    { screen: "results", label: "Resultados", icon: "pricetag-outline" },
-    { screen: "saved", label: "Guardados", icon: "bookmark-outline" },
-    { screen: "plans", label: "Planos", icon: "diamond-outline" },
-    { screen: "profile", label: "Perfil", icon: "person-outline" }
-  ];
-
-  return (
-    <View style={styles.tabs} accessibilityRole="tablist">
-      {tabs.map((tab) => {
-        const selected = active === tab.screen;
-        return (
-          <Pressable key={tab.screen} style={[styles.tabItem, selected && styles.tabItemActive]} onPress={() => onChange(tab.screen)} accessibilityRole="tab" accessibilityState={{ selected }} accessibilityLabel={tab.label}>
-            <Ionicons name={tab.icon} size={20} color={selected ? "#fff" : theme.muted} />
-            <Text style={selected ? styles.tabLabelActive : styles.tabLabel}>{tab.label}</Text>
-          </Pressable>
-        );
-      })}
-    </View>
-  );
-}
-
-function Field({ styles, theme, label, value, onChangeText }: { styles: ReturnType<typeof createStyles>; theme: Theme; label: string; value: string; onChangeText: (value: string) => void }) {
-  return (
-    <View style={styles.fieldWrap}>
-      <Text style={styles.inputLabel}>{label}</Text>
-      <TextInput value={value} onChangeText={onChangeText} style={styles.field} placeholderTextColor={theme.subtle} accessibilityLabel={label} />
-    </View>
-  );
-}
-
-function Button({ styles, theme, label, icon, variant, loading, onPress }: { styles: ReturnType<typeof createStyles>; theme: Theme; label: string; icon: keyof typeof Ionicons.glyphMap; variant: "primary" | "secondary"; loading?: boolean; onPress: () => void }) {
-  const primary = variant === "primary";
-  return (
-    <Pressable style={[styles.button, primary ? styles.primaryButton : styles.secondaryButton, loading && styles.disabledButton]} onPress={loading ? undefined : onPress} accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ busy: Boolean(loading), disabled: Boolean(loading) }}>
-      {loading ? <ActivityIndicator color={primary ? "#fff" : theme.primary} /> : <Ionicons name={icon} size={20} color={primary ? "#fff" : theme.ink} />}
-      <Text style={primary ? styles.primaryButtonText : styles.secondaryButtonText}>{label}</Text>
-    </Pressable>
-  );
-}
-
-function Notice({ styles, theme, notice }: { styles: ReturnType<typeof createStyles>; theme: Theme; notice: AppNotice }) {
-  const icon = notice.tone === "error" ? "alert-circle-outline" : notice.tone === "warning" ? "information-circle-outline" : "checkmark-circle-outline";
-  return (
-    <View style={[styles.notice, notice.tone === "warning" && styles.noticeWarning, notice.tone === "error" && styles.noticeError]} accessibilityRole="summary">
-      <Ionicons name={icon} size={20} color={notice.tone === "success" ? theme.success : notice.tone === "warning" ? theme.warning : theme.danger} />
-      <View style={styles.noticeCopy}>
-        <Text style={styles.noticeTitle}>{notice.title}</Text>
-        <Text style={styles.noticeText}>{notice.message}</Text>
-      </View>
-    </View>
-  );
-}
-
-function Benefit({ styles, theme, icon, title, text }: { styles: ReturnType<typeof createStyles>; theme: Theme; icon: keyof typeof Ionicons.glyphMap; title: string; text: string }) {
-  return (
-    <View style={styles.benefit}>
-      <View style={styles.benefitIcon}><Ionicons name={icon} size={18} color={theme.primary} /></View>
-      <View style={styles.benefitCopy}>
-        <Text style={styles.benefitTitle}>{title}</Text>
-        <Text style={styles.benefitText}>{text}</Text>
-      </View>
-    </View>
-  );
-}
-
-function Chip({ styles, label, active }: { styles: ReturnType<typeof createStyles>; label: string; active?: boolean }) {
-  return <Text style={[styles.filterChip, active && styles.filterChipActive]}>{label}</Text>;
-}
-
-function LoadingState({ styles, theme }: { styles: ReturnType<typeof createStyles>; theme: Theme }) {
-  return <View style={styles.empty}><ActivityIndicator color={theme.primary} /><Text style={styles.emptyTitle}>A procurar melhores ofertas</Text><Text style={styles.emptyText}>Isto pode demorar alguns segundos.</Text></View>;
-}
-
-function EmptyState({ styles, theme, text }: { styles: ReturnType<typeof createStyles>; theme: Theme; text: string }) {
-  return <View style={styles.empty}><Ionicons name="search-outline" size={28} color={theme.primary} /><Text style={styles.emptyTitle}>{text}</Text><Text style={styles.emptyText}>Experimenta outra pesquisa ou usa uma fotografia mais nítida.</Text></View>;
-}
-
-function createStyles(theme: Theme) {
-  return StyleSheet.create({
-    safeArea: { flex: 1, backgroundColor: theme.bg },
-    keyboard: { flex: 1 },
-    shell: { flex: 1, backgroundColor: theme.bg },
-    content: { paddingHorizontal: 18, paddingTop: 14, gap: 18 },
-    stack: { gap: 14 },
-    header: {
-      marginHorizontal: 18,
-      marginTop: 8,
-      minHeight: 60,
-      borderRadius: 14,
-      borderWidth: 1,
-      borderColor: theme.line,
-      backgroundColor: theme.surface,
-      padding: 8,
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      shadowColor: "#111827",
-      shadowOpacity: 0.08,
-      shadowRadius: 20,
-      shadowOffset: { width: 0, height: 10 },
-      elevation: 4
-    },
-    brandWrap: { flexDirection: "row", alignItems: "center", gap: 10 },
-    logo: { width: 40, height: 40, borderRadius: 10, alignItems: "center", justifyContent: "center", backgroundColor: theme.ink },
-    brand: { fontSize: 18, fontWeight: "900", color: theme.ink },
-    brandSub: { fontSize: 12, fontWeight: "700", color: theme.muted, marginTop: 1 },
-    headerIcon: { width: 40, height: 40, borderRadius: 10, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: theme.line, backgroundColor: theme.elevated },
-    eyebrow: { color: theme.primary, fontSize: 12, fontWeight: "900", textTransform: "uppercase", marginTop: 4 },
-    heroTitle: { color: theme.ink, fontSize: 40, lineHeight: 42, fontWeight: "900" },
-    heroTitleCompact: { fontSize: 35, lineHeight: 37 },
-    heroText: { color: theme.muted, fontSize: 17, lineHeight: 26 },
-    sectionTitle: { color: theme.ink, fontSize: 30, lineHeight: 35, fontWeight: "900" },
-    subtitle: { color: theme.muted, fontSize: 15, lineHeight: 22 },
-    scannerCard: { position: "relative", overflow: "hidden", height: 372, borderRadius: 22, backgroundColor: theme.navy },
-    scannerEmpty: { width: "100%", height: "100%", alignItems: "center", justifyContent: "center", backgroundColor: theme.navy },
-    heroImage: { width: "100%", height: "100%" },
-    scannerOverlay: { ...StyleSheet.absoluteFill, backgroundColor: "rgba(8,15,28,0.5)" },
-    scannerTop: { position: "absolute", top: 18, left: 18, right: 18, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-    scannerLabel: { color: "#fff", fontWeight: "900", textTransform: "uppercase", fontSize: 12 },
-    scannerPill: { borderRadius: 999, backgroundColor: "rgba(255,255,255,0.94)", paddingHorizontal: 10, paddingVertical: 7, flexDirection: "row", alignItems: "center", gap: 6 },
-    scannerPillText: { color: lightTheme.ink, fontWeight: "900", fontSize: 12 },
-    scanFrame: { position: "absolute", left: 38, right: 38, top: 135, height: 118, borderRadius: 12, borderWidth: 1, borderColor: "rgba(255,255,255,0.84)", justifyContent: "center" },
-    scanCornerTop: { position: "absolute", top: -1, left: -1, width: 34, height: 34, borderTopWidth: 3, borderLeftWidth: 3, borderColor: "#fff", borderTopLeftRadius: 12 },
-    scanCornerBottom: { position: "absolute", bottom: -1, right: -1, width: 34, height: 34, borderBottomWidth: 3, borderRightWidth: 3, borderColor: "#fff", borderBottomRightRadius: 12 },
-    scanLine: { height: 2, backgroundColor: "#85efc3" },
-    scannerHint: { position: "absolute", left: 28, right: 28, bottom: 26, color: "rgba(255,255,255,0.92)", fontWeight: "800", textAlign: "center" },
-    actionGrid: { flexDirection: "row", gap: 10 },
-    searchCard: { borderRadius: 14, borderWidth: 1, borderColor: theme.line, backgroundColor: theme.surface, padding: 14, gap: 12 },
-    searchInput: { minHeight: 54, borderRadius: 12, borderWidth: 1, borderColor: theme.line, backgroundColor: theme.elevated, flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 14 },
-    input: { flex: 1, color: theme.ink, fontSize: 16, minHeight: 48 },
-    inputLabel: { color: theme.muted, fontSize: 13, fontWeight: "800" },
-    fieldWrap: { gap: 7 },
-    field: { minHeight: 52, borderRadius: 12, borderWidth: 1, borderColor: theme.line, paddingHorizontal: 14, color: theme.ink, backgroundColor: theme.elevated, fontSize: 16 },
-    button: { flex: 1, minHeight: 52, borderRadius: 12, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 8, paddingHorizontal: 14 },
-    primaryButton: { backgroundColor: theme.primary },
-    secondaryButton: { backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.line },
-    disabledButton: { opacity: 0.64 },
-    primaryButtonText: { color: "#fff", fontWeight: "900", fontSize: 15 },
-    secondaryButtonText: { color: theme.ink, fontWeight: "900", fontSize: 15 },
-    notice: { borderRadius: 14, backgroundColor: theme.successSoft, padding: 13, flexDirection: "row", gap: 10, borderWidth: 1, borderColor: "rgba(8,127,91,0.16)" },
-    noticeWarning: { backgroundColor: theme.warningSoft, borderColor: "rgba(161,98,7,0.18)" },
-    noticeError: { backgroundColor: theme.dangerSoft, borderColor: "rgba(194,65,50,0.18)" },
-    noticeCopy: { flex: 1, gap: 2 },
-    noticeTitle: { color: theme.ink, fontWeight: "900", fontSize: 14 },
-    noticeText: { color: theme.muted, lineHeight: 20 },
-    benefitGrid: { gap: 10 },
-    benefit: { borderRadius: 14, borderWidth: 1, borderColor: theme.line, backgroundColor: theme.surface, padding: 13, flexDirection: "row", alignItems: "center", gap: 12 },
-    benefitIcon: { width: 36, height: 36, borderRadius: 10, backgroundColor: theme.primarySoft, alignItems: "center", justifyContent: "center" },
-    benefitCopy: { flex: 1 },
-    benefitTitle: { color: theme.ink, fontWeight: "900" },
-    benefitText: { color: theme.muted, marginTop: 2, lineHeight: 20 },
-    filtersRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-    filterChip: { borderRadius: 999, borderWidth: 1, borderColor: theme.line, backgroundColor: theme.surface, color: theme.muted, paddingHorizontal: 12, paddingVertical: 8, fontWeight: "800" },
-    filterChipActive: { backgroundColor: theme.ink, borderColor: theme.ink, color: "#fff" },
-    offerCard: { borderRadius: 16, backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.line, padding: 12, flexDirection: "row", gap: 12 },
-    offerImage: { width: 104, height: 126, borderRadius: 12, backgroundColor: theme.elevated },
-    offerInfo: { flex: 1, minWidth: 0 },
-    badgeRow: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
-    badge: { alignSelf: "flex-start", borderRadius: 999, backgroundColor: theme.warningSoft, color: theme.warning, paddingHorizontal: 8, paddingVertical: 5, fontSize: 11, fontWeight: "900" },
-    mockBadge: { alignSelf: "flex-start", borderRadius: 999, backgroundColor: theme.primarySoft, color: theme.primary, paddingHorizontal: 8, paddingVertical: 5, fontSize: 11, fontWeight: "900" },
-    exactBadge: { alignSelf: "flex-start", borderRadius: 999, backgroundColor: theme.successSoft, color: theme.success, paddingHorizontal: 8, paddingVertical: 5, fontSize: 11, fontWeight: "900" },
-    similarBadge: { alignSelf: "flex-start", borderRadius: 999, backgroundColor: theme.elevated, color: theme.muted, paddingHorizontal: 8, paddingVertical: 5, fontSize: 11, fontWeight: "900", borderWidth: 1, borderColor: theme.line },
-    affiliateBadge: { alignSelf: "flex-start", borderRadius: 999, backgroundColor: theme.primarySoft, color: theme.primary, paddingHorizontal: 8, paddingVertical: 5, fontSize: 11, fontWeight: "900" },
-    offerTitle: { color: theme.ink, fontSize: 16, lineHeight: 20, fontWeight: "900", marginTop: 8 },
-    offerStore: { color: theme.muted, marginTop: 4, fontSize: 13 },
-    matchReason: { color: theme.muted, marginTop: 5, fontSize: 12, lineHeight: 17 },
-    priceRow: { marginTop: 8 },
-    price: { color: theme.ink, fontSize: 22, fontWeight: "900" },
-    shipping: { color: theme.success, fontSize: 12, fontWeight: "800", marginTop: 2 },
-    rowActions: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 10 },
-    buyButton: { minHeight: 40, borderRadius: 10, backgroundColor: theme.primary, paddingHorizontal: 14, alignItems: "center", justifyContent: "center" },
-    buyButtonText: { color: "#fff", fontWeight: "900" },
-    iconAction: { width: 40, height: 40, borderRadius: 10, borderWidth: 1, borderColor: theme.line, alignItems: "center", justifyContent: "center", backgroundColor: theme.elevated },
-    groupCard: { borderRadius: 16, borderWidth: 1, borderColor: theme.line, backgroundColor: theme.surface, padding: 16, gap: 12 },
-    groupTitle: { color: theme.ink, fontSize: 17, fontWeight: "900" },
-    emptyInline: { color: theme.muted, lineHeight: 21 },
-    savedRow: { borderRadius: 12, backgroundColor: theme.elevated, padding: 12, borderWidth: 1, borderColor: theme.line },
-    savedTitle: { color: theme.ink, fontWeight: "900" },
-    savedSubtitle: { color: theme.muted, marginTop: 4, lineHeight: 20 },
-    planCard: { borderRadius: 16, borderWidth: 1, borderColor: theme.line, backgroundColor: theme.surface, padding: 16, gap: 12 },
-    planFeatured: { borderColor: theme.primary, backgroundColor: theme.primarySoft },
-    planHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
-    planTitle: { color: theme.ink, fontWeight: "900", fontSize: 22 },
-    planItem: { flexDirection: "row", alignItems: "center", gap: 8 },
-    planText: { flex: 1, color: theme.muted, lineHeight: 21, fontWeight: "700" },
-    switchRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12, paddingTop: 4 },
-    switchCopy: { flex: 1 },
-    modalBackdrop: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(4,8,18,0.46)" },
-    sheet: { maxHeight: "92%", borderTopLeftRadius: 24, borderTopRightRadius: 24, backgroundColor: theme.surface, padding: 18, gap: 12 },
-    sheetHandle: { alignSelf: "center", width: 44, height: 5, borderRadius: 999, backgroundColor: theme.line, marginBottom: 2 },
-    sheetHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
-    sheetTitle: { color: theme.ink, fontSize: 25, fontWeight: "900" },
-    sheetImage: { width: "100%", height: 160, borderRadius: 14, backgroundColor: theme.elevated },
-    sheetImageEmpty: { width: "100%", height: 160, borderRadius: 14, backgroundColor: theme.elevated, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: theme.line },
-    chips: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-    chip: { borderRadius: 999, backgroundColor: theme.primarySoft, paddingHorizontal: 10, paddingVertical: 7, color: theme.primary, fontWeight: "800", fontSize: 12 },
-    empty: { minHeight: 220, borderRadius: 16, backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.line, alignItems: "center", justifyContent: "center", padding: 22 },
-    emptyTitle: { color: theme.ink, fontWeight: "900", fontSize: 18, textAlign: "center", marginTop: 12 },
-    emptyText: { color: theme.muted, textAlign: "center", marginTop: 6, lineHeight: 20 },
-    tabs: {
-      position: "absolute",
-      left: 12,
-      right: 12,
-      bottom: Platform.OS === "ios" ? 12 : 10,
-      minHeight: 70,
-      borderRadius: 18,
-      borderWidth: 1,
-      borderColor: theme.line,
-      backgroundColor: theme.surface,
-      padding: 8,
-      flexDirection: "row",
-      gap: 5,
-      shadowColor: "#111827",
-      shadowOpacity: 0.12,
-      shadowRadius: 24,
-      shadowOffset: { width: 0, height: 12 },
-      elevation: 8
-    },
-    tabItem: { flex: 1, borderRadius: 13, alignItems: "center", justifyContent: "center", gap: 3, minHeight: 54 },
-    tabItemActive: { backgroundColor: theme.ink },
-    tabLabel: { color: theme.muted, fontSize: 10, fontWeight: "800" },
-    tabLabelActive: { color: "#fff", fontSize: 10, fontWeight: "900" }
-  });
-}
+function styles(t:Theme){return StyleSheet.create({
+ safe:{flex:1,backgroundColor:t.bg},fill:{flex:1},content:{padding:18,paddingTop:16,paddingBottom:24},stack:{gap:16},flex:{flex:1,minWidth:0},row:{flexDirection:"row",gap:10},chips:{flexDirection:"row",flexWrap:"wrap",gap:6},muted:{color:t.muted,lineHeight:20},label:{color:t.muted,fontSize:12,fontWeight:"800",marginBottom:6},eyebrow:{color:t.primaryStrong,fontSize:12,fontWeight:"900",textTransform:"uppercase"},title:{color:t.ink,fontSize:27,lineHeight:32,fontWeight:"900"},subhead:{color:t.ink,fontSize:18,fontWeight:"900",marginTop:4},
+ header:{marginHorizontal:18,marginTop:8,minHeight:62,borderRadius:14,borderWidth:1,borderColor:t.line,backgroundColor:t.surface,padding:9,flexDirection:"row",alignItems:"center",justifyContent:"space-between",elevation:3},brandWrap:{flexDirection:"row",alignItems:"center",gap:10},logo:{width:42,height:42,borderRadius:10,backgroundColor:t.primary,alignItems:"center",justifyContent:"center"},brand:{color:t.ink,fontSize:18,fontWeight:"900"},brandSub:{color:t.muted,fontSize:12,fontWeight:"600"},trust:{width:40,height:40,borderRadius:10,backgroundColor:t.primarySoft,alignItems:"center",justifyContent:"center"},
+ hero:{color:t.ink,fontSize:34,lineHeight:38,fontWeight:"900"},heroText:{color:t.muted,fontSize:16,lineHeight:23,marginTop:8},scanner:{height:230,borderRadius:16,overflow:"hidden",backgroundColor:t.surface,borderWidth:1,borderColor:t.line},scannerImage:{width:"100%",height:"100%"},scannerEmpty:{flex:1,alignItems:"center",justifyContent:"center",backgroundColor:t.primarySoft},scanFrame:{position:"absolute",left:44,right:44,top:58,height:94,borderWidth:2,borderColor:t.primary,borderRadius:12,justifyContent:"center"},scanLine:{height:2,backgroundColor:t.success},scanHint:{position:"absolute",left:20,right:20,bottom:16,color:"#172033",textAlign:"center",fontWeight:"800",backgroundColor:"rgba(255,255,255,.9)",padding:7,borderRadius:8},searchRow:{flexDirection:"row",gap:8},searchInput:{flex:1,minHeight:52,borderRadius:12,borderWidth:1,borderColor:t.line,backgroundColor:t.surface,flexDirection:"row",alignItems:"center",paddingHorizontal:13,gap:8},input:{flex:1,color:t.ink,fontSize:15},searchButton:{width:52,height:52,borderRadius:12,backgroundColor:t.primaryStrong,alignItems:"center",justifyContent:"center"},
+ button:{flex:1,minHeight:52,borderRadius:12,alignItems:"center",justifyContent:"center",flexDirection:"row",gap:8,paddingHorizontal:10},buttonPrimary:{backgroundColor:t.primaryStrong},buttonSecondary:{backgroundColor:t.surface,borderWidth:1,borderColor:t.line},buttonText:{color:"#fff",fontWeight:"900",fontSize:14,textAlign:"center"},buttonTextSecondary:{color:t.ink,fontWeight:"800",fontSize:14,textAlign:"center"},icon:{width:40,height:40,borderRadius:10,borderWidth:1,borderColor:t.line,backgroundColor:t.elevated,alignItems:"center",justifyContent:"center"},
+ productHero:{flexDirection:"row",gap:14,alignItems:"center"},productImage:{width:88,height:88,borderRadius:12,backgroundColor:t.elevated},productEmpty:{width:88,height:88,borderRadius:12,backgroundColor:t.primarySoft,alignItems:"center",justifyContent:"center"},bestLabel:{color:t.muted,fontSize:11,fontWeight:"800",marginTop:6,textTransform:"uppercase"},best:{color:t.primaryStrong,fontSize:25,fontWeight:"900"},notice:{borderRadius:12,backgroundColor:t.successSoft,padding:12,flexDirection:"row",gap:10},noticeWarn:{backgroundColor:t.warningSoft},noticeError:{backgroundColor:t.dangerSoft},chip:{borderRadius:999,borderWidth:1,borderColor:t.line,backgroundColor:t.surface,color:t.muted,paddingHorizontal:11,paddingVertical:7,fontWeight:"800"},chipOn:{backgroundColor:t.ink,borderColor:t.ink,color:"#fff"},
+ offer:{borderRadius:14,backgroundColor:t.surface,borderWidth:1,borderColor:t.line,padding:12,flexDirection:"row",gap:12},offerImage:{width:90,height:116,borderRadius:10,backgroundColor:t.elevated},offerTitle:{color:t.ink,fontSize:15,lineHeight:19,fontWeight:"900",marginTop:6},exact:{borderRadius:99,backgroundColor:t.successSoft,color:t.success,paddingHorizontal:7,paddingVertical:4,fontSize:10,fontWeight:"900"},similar:{borderRadius:99,backgroundColor:t.elevated,color:t.muted,paddingHorizontal:7,paddingVertical:4,fontSize:10,fontWeight:"900"},badge:{borderRadius:99,backgroundColor:t.warningSoft,color:t.warning,paddingHorizontal:7,paddingVertical:4,fontSize:10,fontWeight:"900"},price:{color:t.ink,fontSize:21,fontWeight:"900",marginTop:6},shipping:{color:t.success,fontSize:11,fontWeight:"800"},actions:{flexDirection:"row",gap:7,marginTop:9},buy:{minHeight:40,borderRadius:10,backgroundColor:t.primaryStrong,paddingHorizontal:10,alignItems:"center",justifyContent:"center",flexShrink:1},buyText:{color:"#fff",fontWeight:"900",fontSize:12},
+ segments:{flexDirection:"row",backgroundColor:t.elevated,borderRadius:12,padding:4,gap:3},segment:{flex:1,minHeight:44,alignItems:"center",justifyContent:"center",borderRadius:9,padding:3},segmentOn:{backgroundColor:t.surface},segmentText:{color:t.muted,fontSize:12,fontWeight:"800",textAlign:"center"},segmentTextOn:{color:t.primaryStrong},savedRow:{minHeight:82,flexDirection:"row",alignItems:"center",gap:12,borderBottomWidth:1,borderColor:t.line,paddingVertical:11},savedImage:{width:58,height:58,borderRadius:9},savedEmpty:{width:58,height:58,borderRadius:9,backgroundColor:t.primarySoft,alignItems:"center",justifyContent:"center"},savedTitle:{color:t.ink,fontWeight:"900",lineHeight:20},
+ plan:{borderRadius:14,borderWidth:1,borderColor:t.line,backgroundColor:t.surface,padding:16,gap:12},planFeatured:{borderColor:t.primary,backgroundColor:t.primarySoft},planHead:{flexDirection:"row",justifyContent:"space-between",gap:12},planTitle:{color:t.ink,fontWeight:"900",fontSize:21},planPrice:{color:t.primaryStrong,fontSize:18,fontWeight:"900",marginTop:4},feature:{flexDirection:"row",alignItems:"center",gap:8},featureText:{flex:1,color:t.muted,lineHeight:20,fontWeight:"700"},settings:{gap:12},settingRow:{flexDirection:"row",alignItems:"center",justifyContent:"space-between",gap:12,borderTopWidth:1,borderColor:t.line,paddingVertical:14},options:{flexDirection:"row",flexWrap:"wrap",gap:8},option:{minHeight:42,borderRadius:10,borderWidth:1,borderColor:t.line,backgroundColor:t.surface,paddingHorizontal:13,justifyContent:"center"},optionOn:{backgroundColor:t.primarySoft,borderColor:t.primary},optionText:{color:t.muted,fontWeight:"800"},optionTextOn:{color:t.primaryStrong},
+ backdrop:{flex:1,justifyContent:"flex-end",backgroundColor:"rgba(4,8,18,.5)"},sheet:{maxHeight:"94%",borderTopLeftRadius:22,borderTopRightRadius:22,backgroundColor:t.surface},handle:{alignSelf:"center",width:44,height:5,borderRadius:99,backgroundColor:t.line,marginTop:10},sheetHead:{flexDirection:"row",alignItems:"center",justifyContent:"space-between",padding:18,paddingBottom:10},sheetTitle:{color:t.ink,fontSize:24,fontWeight:"900"},sheetBody:{paddingHorizontal:18,gap:12},sheetImage:{width:"100%",height:145,borderRadius:12},sheetFoot:{padding:18,paddingTop:12,borderTopWidth:1,borderColor:t.line},field:{minHeight:50,borderRadius:11,borderWidth:1,borderColor:t.line,paddingHorizontal:13,color:t.ink,backgroundColor:t.elevated,fontSize:15,marginBottom:10},info:{paddingVertical:10,borderBottomWidth:1,borderColor:t.line},infoValue:{color:t.ink,fontSize:16,fontWeight:"800"},edit:{color:t.primaryStrong,fontWeight:"900",paddingVertical:10},
+ detailHead:{minHeight:60,paddingHorizontal:16,flexDirection:"row",alignItems:"center",justifyContent:"space-between",borderBottomWidth:1,borderColor:t.line},detail:{padding:18,gap:14},detailImage:{width:"100%",height:250,borderRadius:14,backgroundColor:t.elevated,resizeMode:"contain"},alertBox:{borderRadius:12,backgroundColor:t.primarySoft,padding:14},empty:{minHeight:210,borderRadius:14,backgroundColor:t.surface,borderWidth:1,borderColor:t.line,alignItems:"center",justifyContent:"center",padding:20,gap:7},emptyTitle:{color:t.ink,fontWeight:"900",fontSize:17,textAlign:"center"},emptyText:{color:t.muted,textAlign:"center",lineHeight:20,marginBottom:8},
+ tabs:{minHeight:66,borderTopWidth:1,borderColor:t.line,backgroundColor:t.surface,paddingTop:7,paddingHorizontal:8,flexDirection:"row",gap:3},tab:{flex:1,minHeight:51,borderRadius:10,alignItems:"center",justifyContent:"center",gap:3,paddingHorizontal:2},tabOn:{backgroundColor:t.primarySoft},tabText:{color:t.muted,fontSize:10,fontWeight:"800",maxWidth:"100%"},tabTextOn:{color:t.primaryStrong,fontWeight:"900"}
+})}

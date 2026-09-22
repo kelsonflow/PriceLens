@@ -23,6 +23,7 @@ O backend sera desenvolvido sobre Google Cloud:
 - [Plano do MVP](./docs/mvp-plan.md)
 - [Estrutura de pastas](./docs/folder-structure.md)
 - [Docker e Google Cloud](./docs/google-cloud-docker.md)
+- [Autenticacao e publicacao mobile](./docs/store-release.md)
 
 ## Como executar localmente
 

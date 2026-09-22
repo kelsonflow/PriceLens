@@ -57,4 +57,10 @@ export class UserDataService {
     const [removed] = items.splice(index, 1);
     return removed;
   }
+
+  removeAll(userId: string) {
+    const count = this.list(userId).length;
+    this.itemsByUser.delete(userId);
+    return count;
+  }
 }

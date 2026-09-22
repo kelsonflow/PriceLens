@@ -17,7 +17,7 @@
       "bundleIdentifier": "com.pricelens.app"
     },
     "android": {
-      "package": "com.pricelens.app",
+      "package": "com.kelsonflow.pricelens",
       "blockedPermissions": [
         "android.permission.RECORD_AUDIO"
       ],

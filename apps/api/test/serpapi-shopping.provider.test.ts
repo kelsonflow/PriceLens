@@ -54,7 +54,36 @@ describe("SerpApiShoppingProvider", () => {
       condition: "new"
     });
     expect(offers[0].matchConfidence).toBeGreaterThanOrEqual(80);
-    expect(global.fetch).toHaveBeenCalledWith(expect.stringContaining("engine=google_shopping"));
-    expect(global.fetch).toHaveBeenCalledWith(expect.stringContaining("google_domain=google.pt"));
+    expect(global.fetch).toHaveBeenCalledWith(expect.stringContaining("engine=google_shopping"), expect.any(Object));
+    expect(global.fetch).toHaveBeenCalledWith(expect.stringContaining("google_domain=google.pt"), expect.any(Object));
+  });
+
+  it("relaxes an overly literal query when the first search has no results", async () => {
+    process.env.SERPAPI_API_KEY = "test-key";
+    global.fetch = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ shopping_results: [] }) } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          shopping_results: [{
+            title: "Rato sem fios recarregável",
+            source: "Loja Exemplo",
+            link: "https://example.com/rechargeable-mouse",
+            extracted_price: 19.99
+          }]
+        })
+      } as Response);
+
+    const provider = new SerpApiShoppingProvider();
+    const offers = await provider.search({
+      query: "PRO Rechargeable Computer Mouse",
+      category: "Computer Mouse",
+      country: "PT",
+      currency: "EUR"
+    });
+
+    expect(offers).toHaveLength(1);
+    expect(global.fetch).toHaveBeenCalledTimes(2);
+    expect(global.fetch).toHaveBeenNthCalledWith(2, expect.stringContaining("q=Rechargeable+Mouse"), expect.any(Object));
   });
 });

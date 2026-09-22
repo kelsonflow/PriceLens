@@ -2,6 +2,7 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "jsx": "react-jsx",
+    "customConditions": ["react-native"],
     "ignoreDeprecations": "6.0",
     "noEmit": true
   },

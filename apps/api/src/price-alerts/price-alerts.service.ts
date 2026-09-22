@@ -114,6 +114,12 @@ export class PriceAlertsService {
     return { results, checkedAt: new Date().toISOString() };
   }
 
+  removeAll(userId: string) {
+    const count = this.list(userId).length;
+    this.alertsByUser.delete(userId);
+    return count;
+  }
+
   private findForUser(userId: string, id: string) {
     const alerts = this.list(userId);
     const index = alerts.findIndex((alert) => alert.id === id);

@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
 import { AffiliatesModule } from "./affiliates/affiliates.module";
+import { AuthModule } from "./auth/auth.module";
 import { HealthController } from "./health.controller";
 import { MatchingModule } from "./matching/matching.module";
 import { ProductIdentificationsModule } from "./product-identifications/product-identifications.module";
@@ -12,6 +13,7 @@ import { UserDataModule } from "./user-data/user-data.module";
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    AuthModule,
     AffiliatesModule,
     MatchingModule,
     ShoppingProvidersModule,

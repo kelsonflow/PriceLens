@@ -36,32 +36,42 @@ export class SerpApiShoppingProvider implements ShoppingProvider {
       return [];
     }
 
-    const query = buildSearchQuery(input);
-    const params = new URLSearchParams({
-      engine: "google_shopping",
-      api_key: apiKey,
-      q: query,
-      gl: (input.country || "PT").toLowerCase(),
-      hl: "pt",
-      google_domain: googleDomainForCountry(input.country),
-      num: String(Number(process.env.SERPAPI_MAX_RESULTS ?? 20))
-    });
+    const queries = buildSearchQueries(input);
+    for (const [queryIndex, query] of queries.entries()) {
+      const params = new URLSearchParams({
+        engine: "google_shopping",
+        api_key: apiKey,
+        q: query,
+        gl: (input.country || "PT").toLowerCase(),
+        hl: "pt",
+        google_domain: googleDomainForCountry(input.country),
+        num: String(Number(process.env.SERPAPI_MAX_RESULTS ?? 20))
+      });
 
-    const response = await fetch(`https://serpapi.com/search.json?${params.toString()}`);
-    if (!response.ok) {
-      this.logger.warn(`SerpApi request failed with status ${response.status}`);
-      return [];
+      const response = await fetch(`https://serpapi.com/search.json?${params.toString()}`, {
+        signal: AbortSignal.timeout(Number(process.env.SERPAPI_TIMEOUT_MS ?? 15_000))
+      });
+      if (!response.ok) {
+        this.logger.warn(`SerpApi request failed with status ${response.status}`);
+        return [];
+      }
+
+      const data = (await response.json()) as SerpApiShoppingResponse;
+      if (data.error) {
+        this.logger.warn(`SerpApi returned an error: ${data.error}`);
+        return [];
+      }
+
+      const offers = (data.shopping_results ?? [])
+        .map((result, index) => this.toOffer(result, input, index))
+        .filter((offer): offer is NormalizedOffer => Boolean(offer));
+      if (offers.length > 0) {
+        if (queryIndex > 0) this.logger.log(`SerpApi fallback query returned ${offers.length} offers.`);
+        return offers;
+      }
     }
 
-    const data = (await response.json()) as SerpApiShoppingResponse;
-    if (data.error) {
-      this.logger.warn(`SerpApi returned an error: ${data.error}`);
-      return [];
-    }
-
-    return (data.shopping_results ?? [])
-      .map((result, index) => this.toOffer(result, input, index))
-      .filter((offer): offer is NormalizedOffer => Boolean(offer));
+    return [];
   }
 
   private toOffer(result: SerpApiShoppingResult, input: ProductSearchInput, index: number): NormalizedOffer | undefined {
@@ -105,7 +115,46 @@ export class SerpApiShoppingProvider implements ShoppingProvider {
 }
 
 function buildSearchQuery(input: ProductSearchInput): string {
-  return [input.query, input.brand, input.model, input.category].filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
+  return uniqueWords([input.query, input.brand, input.model, input.category].filter(Boolean).join(" "));
+}
+
+function buildSearchQueries(input: ProductSearchInput): string[] {
+  const primary = buildSearchQuery(input);
+  const meaningful = uniqueWords([input.brand, input.model, input.query].filter(Boolean).join(" "), GENERIC_SEARCH_WORDS);
+  const localized = localizeSearchQuery(meaningful || primary, input.country);
+  return [...new Set([primary, meaningful, localized].map((value) => value.trim()).filter((value) => value.length >= 2))];
+}
+
+const GENERIC_SEARCH_WORDS = new Set(["pro", "professional", "computer", "product", "produto"]);
+
+function uniqueWords(value: string, excluded = new Set<string>()): string {
+  const seen = new Set<string>();
+  return value
+    .replace(/\s+/g, " ")
+    .trim()
+    .split(" ")
+    .filter((word) => {
+      const normalized = word.toLowerCase().replace(/[^a-z0-9çáàãâéêíóôõúüñ-]/gi, "");
+      if (!normalized || excluded.has(normalized) || seen.has(normalized)) return false;
+      seen.add(normalized);
+      return true;
+    })
+    .join(" ");
+}
+
+function localizeSearchQuery(value: string, country?: string): string {
+  if (country?.toUpperCase() !== "PT") return value;
+  const translations: Record<string, string> = {
+    mouse: "rato",
+    rechargeable: "recarregável",
+    wireless: "sem fios",
+    headphones: "auscultadores",
+    earbuds: "auriculares",
+    keyboard: "teclado",
+    charger: "carregador",
+    shoes: "sapatilhas"
+  };
+  return uniqueWords(value.split(/\s+/).map((word) => translations[word.toLowerCase()] ?? word).join(" "));
 }
 
 function googleDomainForCountry(country?: string): string {

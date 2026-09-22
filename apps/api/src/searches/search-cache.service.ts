@@ -31,7 +31,7 @@ export class SearchCacheService {
   }
 
   set(dto: SearchOffersDto, results: NormalizedOffer[]) {
-    if (process.env.SEARCH_CACHE_ENABLED === "false") return;
+    if (process.env.SEARCH_CACHE_ENABLED === "false" || results.length === 0) return;
     this.entries.set(this.key(dto), {
       results,
       groups: groupOffersByMatch(results),

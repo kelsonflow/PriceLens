@@ -3,6 +3,8 @@ import { ValidationPipe } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
 import { json } from "express";
 import { AppModule } from "./app.module";
+import { FirebaseAuthService } from "./auth/firebase-auth.service";
+import { firebaseAuthMiddleware } from "./auth/firebase-auth.middleware";
 import { apiAccessTokenMiddleware, rateLimitMiddleware, securityHeadersMiddleware } from "./common/security.middleware";
 
 async function bootstrap() {
@@ -14,6 +16,7 @@ async function bootstrap() {
   app.use(securityHeadersMiddleware);
   app.use(rateLimitMiddleware);
   app.use(apiAccessTokenMiddleware);
+  app.use(firebaseAuthMiddleware(app.get(FirebaseAuthService)));
   app.use(json({ limit: "10mb" }));
   app.useGlobalPipes(
     new ValidationPipe({

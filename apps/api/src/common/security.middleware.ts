@@ -28,6 +28,11 @@ export function apiAccessTokenMiddleware(request: Request, response: Response, n
     return;
   }
 
+  if (process.env.FIREBASE_AUTH_ENABLED === "true" && bearer) {
+    next();
+    return;
+  }
+
   response.status(401).json({ statusCode: 401, message: "API access token required" });
 }
 
