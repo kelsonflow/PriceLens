@@ -1,5 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import { type NormalizedOffer } from "@pricelens/shared";
+import { createHash } from "node:crypto";
+import { FirebaseAdminService } from "../firebase-admin/firebase-admin.service";
 import { SearchOffersDto } from "./dto/search-offers.dto";
 
 interface SearchCacheEntry {
@@ -17,6 +19,8 @@ export interface OfferMatchGroups {
 @Injectable()
 export class SearchCacheService {
   private readonly entries = new Map<string, SearchCacheEntry>();
+
+  constructor(private readonly firebase?: FirebaseAdminService) {}
 
   get(dto: SearchOffersDto): SearchCacheEntry | undefined {
     if (process.env.SEARCH_CACHE_ENABLED === "false") return undefined;
@@ -40,6 +44,36 @@ export class SearchCacheService {
     });
   }
 
+  async getShared(dto: SearchOffersDto): Promise<SearchCacheEntry | undefined> {
+    const local = this.get(dto);
+    if (local || !this.firebase || process.env.SEARCH_CACHE_ENABLED === "false") return local;
+    try {
+      const snapshot = await this.firebase.firestore.collection("searchCache").doc(this.documentId(dto)).get();
+      const entry = snapshot.data() as SearchCacheEntry | undefined;
+      if (!entry) return undefined;
+      if (entry.expiresAt <= Date.now()) {
+        await snapshot.ref.delete();
+        return undefined;
+      }
+      this.entries.set(this.key(dto), entry);
+      return entry;
+    } catch {
+      return undefined;
+    }
+  }
+
+  async setShared(dto: SearchOffersDto, results: NormalizedOffer[]) {
+    this.set(dto, results);
+    if (!this.firebase || process.env.SEARCH_CACHE_ENABLED === "false" || results.length === 0) return;
+    const entry = this.entries.get(this.key(dto));
+    if (!entry) return;
+    try {
+      await this.firebase.firestore.collection("searchCache").doc(this.documentId(dto)).set(entry);
+    } catch {
+      // The in-memory cache remains available if the shared cache is temporarily unavailable.
+    }
+  }
+
   clear() {
     this.entries.clear();
   }
@@ -56,6 +90,10 @@ export class SearchCacheService {
       maxPrice: dto.maxPrice,
       freeShippingOnly: dto.freeShippingOnly ?? false
     });
+  }
+
+  private documentId(dto: SearchOffersDto): string {
+    return createHash("sha256").update(this.key(dto)).digest("hex");
   }
 
   private ttlMs(): number {

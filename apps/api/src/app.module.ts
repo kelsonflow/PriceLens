@@ -9,10 +9,14 @@ import { PriceAlertsModule } from "./price-alerts/price-alerts.module";
 import { SearchesModule } from "./searches/searches.module";
 import { ShoppingProvidersModule } from "./shopping-providers/shopping-providers.module";
 import { UserDataModule } from "./user-data/user-data.module";
+import { FirebaseAdminModule } from "./firebase-admin/firebase-admin.module";
+import { NotificationsModule } from "./notifications/notifications.module";
+import { UsageModule } from "./usage/usage.module";
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    FirebaseAdminModule,
     AuthModule,
     AffiliatesModule,
     MatchingModule,
@@ -20,7 +24,9 @@ import { UserDataModule } from "./user-data/user-data.module";
     ProductIdentificationsModule,
     PriceAlertsModule,
     SearchesModule,
-    UserDataModule
+    UserDataModule,
+    NotificationsModule,
+    UsageModule
   ],
   controllers: [HealthController]
 })

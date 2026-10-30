@@ -15,7 +15,7 @@ export class SearchesService {
   ) {}
 
   async searchOffers(dto: SearchOffersDto) {
-    const cached = this.searchCacheService.get(dto);
+    const cached = await this.searchCacheService.getShared(dto);
     if (cached) {
       return {
         results: cached.results,
@@ -44,7 +44,7 @@ export class SearchesService {
     );
     const offers = this.affiliateEngineService.enrichOffers(this.matchingService.classifyOffers(providerOffers, input));
     const groups = groupOffersByMatch(offers);
-    this.searchCacheService.set(dto, offers);
+    await this.searchCacheService.setShared(dto, offers);
 
     return {
       results: offers,

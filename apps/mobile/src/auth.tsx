@@ -1,4 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import Constants from "expo-constants";
 import { getApps, initializeApp } from "firebase/app";
 import * as FirebaseAuthNative from "firebase/auth";
 import {
@@ -29,12 +30,13 @@ interface AuthContextValue {
   deleteAccount: () => Promise<void>;
 }
 
+const nativeConfig = Constants.expoConfig?.extra?.firebase ?? {};
 const firebaseConfig = {
-  apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
-  authDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN,
-  projectId: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID,
-  appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID,
-  messagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
+  apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY || nativeConfig.apiKey,
+  authDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN || nativeConfig.authDomain,
+  projectId: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID || nativeConfig.projectId,
+  appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID || nativeConfig.appId,
+  messagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || nativeConfig.messagingSenderId
 };
 
 const configured = Boolean(firebaseConfig.apiKey && firebaseConfig.projectId && firebaseConfig.appId);
@@ -87,7 +89,6 @@ export function AuthProvider({ children }: PropsWithChildren) {
       await action();
     } catch (cause) {
       setError(authErrorMessage(cause));
-      throw cause;
     } finally {
       setBusy(false);
     }
@@ -104,7 +105,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
       const auth = requireAuth();
       const { GoogleSignin } = await import("@react-native-google-signin/google-signin");
       GoogleSignin.configure({
-        webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+        webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || Constants.expoConfig?.extra?.googleWebClientId,
         iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID
       });
       if (Platform.OS === "android") await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });

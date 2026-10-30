@@ -3,18 +3,22 @@ import { ConfirmIdentificationDto } from "./dto/confirm-identification.dto";
 import { CreateImageIdentificationDto } from "./dto/create-image-identification.dto";
 import { CreateTextIdentificationDto } from "./dto/create-text-identification.dto";
 import { ProductIdentificationsService } from "./product-identifications.service";
+import { RequestUser, type RequestUser as RequestUserContext } from "../common/request-user.decorator";
+import { UsageService } from "../usage/usage.service";
 
 @Controller("product-identifications")
 export class ProductIdentificationsController {
-  constructor(private readonly productIdentificationsService: ProductIdentificationsService) {}
+  constructor(private readonly productIdentificationsService: ProductIdentificationsService, private readonly usage: UsageService) {}
 
   @Post("text")
-  createFromText(@Body() dto: CreateTextIdentificationDto) {
+  async createFromText(@RequestUser() user: RequestUserContext, @Body() dto: CreateTextIdentificationDto) {
+    await this.usage.consume(user, "textIdentification");
     return this.productIdentificationsService.createFromText(dto);
   }
 
   @Post("image")
-  createFromImage(@Body() dto: CreateImageIdentificationDto) {
+  async createFromImage(@RequestUser() user: RequestUserContext, @Body() dto: CreateImageIdentificationDto) {
+    await this.usage.consume(user, "imageRecognition");
     return this.productIdentificationsService.createFromImage(dto);
   }
 

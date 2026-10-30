@@ -1,123 +1,58 @@
-# Autenticacao e publicacao mobile
+# PriceLens store release
 
-## Estado implementado
+## Release configuration
 
-- Firebase Authentication no cliente com Google e Apple.
-- Persistencia de sessao no dispositivo.
-- ID token enviado automaticamente ao backend.
-- Validacao do token com Firebase Admin e ADC no Cloud Run.
-- Consulta de sessao em `GET /auth/session`.
-- Eliminacao de conta e dados associados em `DELETE /auth/account`.
-- Perfis EAS para development, preview e production.
+- App version: `1.0.0`
+- Android package: `com.kelsonflow.pricelens`
+- iOS bundle identifier: `com.kelsonflow.pricelens`
+- EAS production profile: automatic build-number increment, `production` update channel
+- Android submission track: internal testing
 
-Google e Apple Sign-In usam modulos nativos. Depois desta alteracao, testa autenticacao numa development build e nao no Expo Go.
+## Required EAS production variables
 
-## 1. Firebase e Google
+- `GOOGLE_SERVICES_JSON` (secret file)
+- `GOOGLE_SERVICE_INFO_PLIST` (secret file)
+- `EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY`
+- `EXPO_PUBLIC_REVENUECAT_IOS_API_KEY`
+- `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID`
+- `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID`
 
-1. Adiciona Firebase ao projeto Google Cloud `pricelens-506120`.
-2. Em Firebase Console > Authentication > Sign-in method, ativa Google.
-3. Regista a app Android com package `com.kelsonflow.pricelens`.
-4. Regista a app iOS com bundle ID `com.pricelens.app`.
-5. Adiciona ao registo Android o SHA-1 da chave gerida pelo EAS.
-6. Copia a configuracao Web da app Firebase para as variaveis `EXPO_PUBLIC_FIREBASE_*`.
-7. Cria/identifica os OAuth client IDs Web e iOS. O iOS tambem precisa do reversed client ID em `GOOGLE_IOS_URL_SCHEME`.
+## Validate
 
-Ativa o backend e concede ao service account do Cloud Run permissao para eliminar contas:
+Run from the repository root:
 
-```bash
-gcloud services enable identitytoolkit.googleapis.com --project pricelens-506120
-
-gcloud projects add-iam-policy-binding pricelens-506120 \
-  --member="serviceAccount:707776284799-compute@developer.gserviceaccount.com" \
-  --role="roles/firebaseauth.admin"
+```powershell
+pnpm --filter @pricelens/mobile build
+pnpm --filter @pricelens/mobile test
+pnpm dlx expo-doctor@latest apps/mobile
 ```
 
-No deploy do Cloud Run, acrescenta:
+The project intentionally keeps the tested Expo SDK 57 patch versions until the
+newest patches pass the workspace supply-chain release-age policy.
 
-```text
-FIREBASE_AUTH_ENABLED=true
-FIREBASE_PROJECT_ID=pricelens-506120
+## Build
+
+Run from `apps/mobile`:
+
+```powershell
+eas build --platform android --profile production
+eas build --platform ios --profile production
 ```
 
-## 2. Sign in with Apple
+## Submit
 
-Requer adesao ativa ao Apple Developer Program.
+Submit Android to the internal Play testing track first:
 
-1. Cria o App ID `com.pricelens.app` e ativa Sign in with Apple.
-2. Cria uma chave Sign in with Apple e guarda o Key ID, Team ID e ficheiro `.p8` fora do repositorio.
-3. No Firebase Authentication, ativa Apple e configura Team ID, Key ID e chave privada.
-4. Se usares emails Firebase, configura o Apple Private Email Relay para o dominio Firebase.
-
-## 3. Inicializar EAS
-
-Executa estes comandos dentro de `apps/mobile`:
-
-```bash
-cd apps/mobile
-npx eas-cli@latest login
-npx eas-cli@latest init
-npx eas-cli@latest build:configure
+```powershell
+eas submit --platform android --profile production --latest
 ```
 
-O `eas init` devolve o `projectId`. Guarda-o como `EAS_PROJECT_ID` e confirma que aparece em `expo.extra.eas.projectId`.
+Submit iOS to App Store Connect/TestFlight:
 
-Configura as variaveis do perfil development e production no EAS. As configuracoes Firebase e OAuth client IDs sao identificadores publicos, mas devem ser geridos por ambiente para evitar enganos entre projetos.
-
-## 4. Development build
-
-Android:
-
-```bash
-npx eas-cli@latest build --platform android --profile development
+```powershell
+eas submit --platform ios --profile production --latest
 ```
 
-iOS requer Apple Developer e um dispositivo registado:
-
-```bash
-npx eas-cli@latest device:create
-npx eas-cli@latest build --platform ios --profile development
-```
-
-Depois de instalar a development build, inicia o Metro com:
-
-```bash
-pnpm exec expo start --dev-client --lan --clear
-```
-
-## 5. Builds das lojas
-
-```bash
-npx eas-cli@latest build --platform android --profile production
-npx eas-cli@latest build --platform ios --profile production
-```
-
-O Android gera `.aab`; o iOS gera uma build de distribuicao para TestFlight/App Store Connect.
-
-## 6. Submissao inicial
-
-Google Play:
-
-```bash
-npx eas-cli@latest submit --platform android --profile production
-```
-
-Usa primeiro a faixa de teste interno. Completa ficha da loja, Data safety, classificacao etaria, politica de privacidade e URL web para pedido de eliminacao de conta.
-
-Apple/TestFlight:
-
-```bash
-npx eas-cli@latest submit --platform ios --profile production
-```
-
-Completa App Privacy, screenshots, informacao de revisao e disponibiliza uma conta de teste se o revisor nao puder usar o login normal.
-
-## Bloqueios antes da submissao
-
-- Conta Google Play Developer ativa.
-- Conta Apple Developer ativa.
-- Nome e titular legais do publicador definidos.
-- Icone 1024x1024, adaptive icon Android, splash e screenshots finais.
-- URLs publicas de politica de privacidade, termos, suporte e eliminacao de conta.
-- Persistencia de utilizadores, favoritos e alertas migrada da memoria do Cloud Run para Cloud SQL ou Firestore.
-- Testes Google/Apple em builds assinadas e teste de eliminacao de conta.
-- Formulario Data safety e App Privacy revistos com os dados realmente recolhidos pelos SDKs.
+Promote builds from internal testing/TestFlight only after purchase, sign-in,
+notifications, camera, photo picker, account deletion, and restore-purchases
+flows have been tested on physical devices.

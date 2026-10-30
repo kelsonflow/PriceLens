@@ -27,4 +27,13 @@ describe("resolveRequestUser", () => {
     expect(user.authType).toBe("anonymous");
     expect(user.id).not.toBe("unverified-token");
   });
+
+  it("uses the anonymous installation id before the network address", () => {
+    const user = resolveRequestUser({
+      headers: { "x-device-id": "device_123" },
+      ip: "10.0.0.1"
+    });
+
+    expect(user).toEqual({ id: "device_123", authType: "anonymous" });
+  });
 });

@@ -1,3 +1,12 @@
 {
-  "expo": {}
+  "expo": {
+    "extra": {
+      "eas": {
+        "projectId": "27c5c602-4c97-4244-bfae-b0416c11ccd0"
+      }
+    },
+    "android": {
+      "package": "com.kelson2000.pricelens"
+    }
+  }
 }

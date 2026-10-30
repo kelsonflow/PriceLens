@@ -26,7 +26,8 @@ export function resolveRequestUser(request: Pick<AuthenticatedRequest, "headers"
     };
   }
   const headerUserId = firstHeaderValue(request.headers["x-user-id"])?.trim();
-  const id = sanitizeUserId(headerUserId || request.ip || "anonymous");
+  const deviceId = firstHeaderValue(request.headers["x-device-id"])?.trim();
+  const id = sanitizeUserId(headerUserId || deviceId || request.ip || "anonymous");
   return {
     id,
     authType: headerUserId ? "header" : "anonymous"

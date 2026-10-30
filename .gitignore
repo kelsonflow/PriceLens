@@ -15,3 +15,5 @@ apps/mobile/GoogleService-Info.plist
 *.tsbuildinfo
 .DS_Store
 Thumbs.db
+
+.vercel

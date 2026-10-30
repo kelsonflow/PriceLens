@@ -23,6 +23,11 @@ export function apiAccessTokenMiddleware(request: Request, response: Response, n
 
   const apiKey = firstHeaderValue(request.headers["x-api-key"]);
   const bearer = firstHeaderValue(request.headers.authorization)?.replace(/^Bearer\s+/i, "");
+  const schedulerSecret = firstHeaderValue(request.headers["x-scheduler-secret"]);
+  if (process.env.SCHEDULER_SECRET && schedulerSecret === process.env.SCHEDULER_SECRET) {
+    next();
+    return;
+  }
   if (apiKey === expected || bearer === expected) {
     next();
     return;
@@ -45,7 +50,7 @@ export function rateLimitMiddleware(request: Request, response: Response, next: 
   }
 
   const now = Date.now();
-  const key = `${firstHeaderValue(request.headers["x-user-id"]) ?? request.ip}:${request.path}`;
+  const key = `${firstHeaderValue(request.headers["x-user-id"]) ?? firstHeaderValue(request.headers["x-device-id"]) ?? request.ip}:${request.path}`;
   const current = rateLimitStore.get(key);
   const entry = current && current.resetAt > now ? current : { count: 0, resetAt: now + windowMs };
   entry.count += 1;

@@ -3,18 +3,20 @@ import { RequestUser, type RequestUser as RequestUserContext } from "../common/r
 import { CreatePriceAlertDto } from "./dto/create-price-alert.dto";
 import { UpdatePriceAlertDto } from "./dto/update-price-alert.dto";
 import { PriceAlertsService } from "./price-alerts.service";
+import { SubscriptionsService } from "../subscriptions/subscriptions.service";
 
 @Controller("price-alerts")
 export class PriceAlertsController {
-  constructor(private readonly priceAlertsService: PriceAlertsService) {}
+  constructor(private readonly priceAlertsService: PriceAlertsService, private readonly subscriptions: SubscriptionsService) {}
 
   @Get()
-  list(@RequestUser() user: RequestUserContext) {
-    return { items: this.priceAlertsService.list(user.id) };
+  async list(@RequestUser() user: RequestUserContext) {
+    return { items: await this.priceAlertsService.list(user.id) };
   }
 
   @Post()
-  create(@RequestUser() user: RequestUserContext, @Body() dto: CreatePriceAlertDto) {
+  async create(@RequestUser() user: RequestUserContext, @Body() dto: CreatePriceAlertDto) {
+    await this.subscriptions.assertPremium(user.id);
     return this.priceAlertsService.create(user.id, dto);
   }
 
