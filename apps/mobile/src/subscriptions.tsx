@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useMemo, useState, type PropsWith
 import { AppState, Platform } from "react-native";
 import Purchases, { LOG_LEVEL, type CustomerInfo, type PurchasesOffering, type PurchasesPackage } from "react-native-purchases";
 import { useAuth } from "./auth";
+import { friendlySubscriptionError } from "./subscription-errors";
 
 const PREMIUM_ENTITLEMENT = "premium";
 const PREMIUM_PRODUCT = "pricelens_premium";
@@ -37,6 +38,12 @@ export function SubscriptionsProvider({ children }: PropsWithChildren) {
 
   function applyCustomerInfo(info: CustomerInfo) {
     setIsPremium(Boolean(info.entitlements.active[PREMIUM_ENTITLEMENT]));
+  }
+
+  async function syncRevenueCatUser() {
+    if (!auth.user) return;
+    const { customerInfo } = await Purchases.logIn(auth.user.uid);
+    applyCustomerInfo(customerInfo);
   }
 
   async function refreshProducts() {
@@ -115,6 +122,7 @@ export function SubscriptionsProvider({ children }: PropsWithChildren) {
       setPurchasing(true);
       setError("");
       try {
+        await syncRevenueCatUser();
         const { customerInfo } = await Purchases.purchasePackage(premiumPackage);
         applyCustomerInfo(customerInfo);
         return Boolean(customerInfo.entitlements.active[PREMIUM_ENTITLEMENT]);
@@ -130,6 +138,7 @@ export function SubscriptionsProvider({ children }: PropsWithChildren) {
       setPurchasing(true);
       setError("");
       try {
+        await syncRevenueCatUser();
         const info = await Purchases.restorePurchases();
         applyCustomerInfo(info);
         return Boolean(info.entitlements.active[PREMIUM_ENTITLEMENT]);
@@ -159,7 +168,7 @@ function subscriptionError(cause: unknown) {
       userInfo?: { underlyingErrorMessage?: unknown };
     };
     const underlying = error.underlyingErrorMessage ?? error.userInfo?.underlyingErrorMessage;
-    if (typeof underlying === "string" && underlying.trim()) return underlying.trim();
+    if (typeof underlying === "string" && underlying.trim()) return friendlySubscriptionError(underlying);
   }
-  return cause instanceof Error ? cause.message : "Não foi possível comunicar com a loja.";
+  return cause instanceof Error ? friendlySubscriptionError(cause.message) : "Não foi possível comunicar com a loja.";
 }

@@ -39,4 +39,9 @@ export class PriceAlertsController {
   check(@RequestUser() user: RequestUserContext, @Param("id") id: string) {
     return this.priceAlertsService.check(user.id, id);
   }
+
+  @Get(":id/history")
+  history(@RequestUser() user: RequestUserContext, @Param("id") id: string) {
+    return this.priceAlertsService.history(user.id, id);
+  }
 }

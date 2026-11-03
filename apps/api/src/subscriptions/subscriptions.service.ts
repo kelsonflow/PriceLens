@@ -24,7 +24,13 @@ export class SubscriptionsService {
       const payload = await response.json() as { subscriber?: { entitlements?: Record<string, { expires_date?: string | null }> } };
       const premium = payload.subscriber?.entitlements?.premium;
       const active = Boolean(premium && (!premium.expires_date || Date.parse(premium.expires_date) > Date.now()));
-      this.cache.set(userId, { active, expiresAt: Date.now() + Number(process.env.SUBSCRIPTION_CACHE_TTL_MS ?? 5 * 60 * 1000) });
+      if (active) {
+        this.cache.set(userId, { active, expiresAt: Date.now() + Number(process.env.SUBSCRIPTION_CACHE_TTL_MS ?? 5 * 60 * 1000) });
+      } else {
+        // A user can upgrade at any moment, so a negative result must not survive
+        // the purchase and keep the account on Starter until the cache expires.
+        this.cache.delete(userId);
+      }
       return active;
     } catch (error) {
       this.logger.warn(`Could not validate subscription: ${String(error)}`);

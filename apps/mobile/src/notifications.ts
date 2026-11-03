@@ -1,13 +1,31 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import Constants from "expo-constants";
 import * as Notifications from "expo-notifications";
-import { Platform } from "react-native";
+import { Linking, Platform } from "react-native";
 import { currentIdToken } from "./auth";
+import { notificationTargetUrl } from "./notification-target";
+
+export { notificationTargetUrl } from "./notification-target";
 
 const API = (process.env.EXPO_PUBLIC_API_BASE_URL ?? "https://pricelens-api-44ftuum65a-ew.a.run.app").replace(/\/$/, "");
 const PUSH_TOKEN_KEY = "pricelens.pushToken";
 
 Notifications.setNotificationHandler({ handleNotification: async () => ({ shouldShowBanner: true, shouldShowList: true, shouldPlaySound: true, shouldSetBadge: false }) });
+
+export function installNotificationResponseHandler() {
+  if (Platform.OS === "web") return () => undefined;
+  let lastResponseId: string | undefined;
+  const openResponse = async (response: Notifications.NotificationResponse | null) => {
+    if (!response || response.notification.request.identifier === lastResponseId) return;
+    const url = notificationTargetUrl(response.notification.request.content.data);
+    if (!url) return;
+    lastResponseId = response.notification.request.identifier;
+    await Linking.openURL(url);
+  };
+  const subscription = Notifications.addNotificationResponseReceivedListener((response) => { void openResponse(response); });
+  void Notifications.getLastNotificationResponseAsync().then(openResponse);
+  return () => subscription.remove();
+}
 
 export async function enablePushNotifications(locale: string) {
   if (Platform.OS === "web") return false;

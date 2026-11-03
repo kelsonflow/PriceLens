@@ -10,6 +10,7 @@ export interface ProductIdentification {
   name: string;
   brand?: string;
   model?: string;
+  reference?: string;
   category?: string;
   color?: string;
   visibleFeatures: string[];

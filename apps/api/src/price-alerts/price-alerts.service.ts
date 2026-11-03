@@ -1,6 +1,7 @@
 import { forwardRef, HttpException, HttpStatus, Inject, Injectable, NotFoundException } from "@nestjs/common";
 import { type NormalizedOffer } from "@pricelens/shared";
 import { FieldPath } from "firebase-admin/firestore";
+import { createHash } from "node:crypto";
 import { FirebaseAdminService } from "../firebase-admin/firebase-admin.service";
 import { NotificationsService } from "../notifications/notifications.service";
 import { SearchesService } from "../searches/searches.service";
@@ -32,7 +33,7 @@ export class PriceAlertsService {
   async create(userId: string, dto: CreatePriceAlertDto) {
     const limit = boundedNumber("PREMIUM_PRICE_ALERT_LIMIT", 5, 1, 100);
     const current = await this.list(userId);
-    if (current.length >= limit) {
+    if (activeAlertCount(current) >= limit) {
       throw new HttpException({
         statusCode: HttpStatus.CONFLICT,
         code: "PRICE_ALERT_LIMIT_REACHED",
@@ -61,12 +62,33 @@ export class PriceAlertsService {
   }
 
   private async applyOffers(alert: PriceAlert, offers: NormalizedOffer[], checkedAt = new Date().toISOString()) {
-    const bestOffer = offers[0]; const matched = Boolean(bestOffer && bestOffer.totalPrice <= alert.targetPrice);
+    const eligibleOffers = offers.filter(isEligibleAlertOffer);
+    const bestOffer = eligibleOffers.reduce<NormalizedOffer | undefined>((best, offer) => !best || offer.totalPrice < best.totalPrice ? offer : best, undefined);
+    const matched = Boolean(bestOffer && bestOffer.totalPrice <= alert.targetPrice);
+    if (bestOffer) await this.recordObservation(alert, bestOffer, checkedAt);
     const shouldNotify = matched && (!alert.lastNotifiedAt || alert.lastBestOffer?.totalPrice !== bestOffer?.totalPrice);
     const updated: PriceAlert = { ...alert, lastCheckedAt: checkedAt, lastMatchedAt: matched ? checkedAt : alert.lastMatchedAt, lastNotifiedAt: shouldNotify ? checkedAt : alert.lastNotifiedAt, lastBestOffer: bestOffer, updatedAt: checkedAt };
     await this.collection.doc(alert.id).set(clean(updated));
     if (shouldNotify && bestOffer) await this.notifications.sendPriceAlert(updated, bestOffer);
     return { alert: updated, matched, bestOffer, offers, notified: shouldNotify };
+  }
+
+  async history(userId: string, id: string) {
+    const alert = await this.findForUser(userId, id);
+    const snapshot = await this.firebase.firestore.collection("priceObservations").where("productKey", "==", searchKey(alert)).get();
+    const items = snapshot.docs.map((doc) => doc.data()).sort((a, b) => String(a.observedAt).localeCompare(String(b.observedAt))).slice(-90);
+    return { items };
+  }
+
+  private async recordObservation(alert: PriceAlert, offer: NormalizedOffer, observedAt: string) {
+    const productKey = searchKey(alert);
+    const interval = observedAt.slice(0, 16).replace(/\D/g, "");
+    const id = `${createHash("sha256").update(productKey).digest("hex").slice(0, 24)}_${interval}`;
+    await this.firebase.firestore.collection("priceObservations").doc(id).set({
+      id, productKey, query: alert.query, title: alert.title, brand: alert.brand ?? null, model: alert.model ?? null,
+      country: alert.country, currency: offer.currency, price: offer.totalPrice, storeName: offer.storeName,
+      offerId: offer.id, productUrl: offer.affiliateUrl ?? offer.productUrl, observedAt
+    }, { merge: true });
   }
 
   async checkAll(userId: string) { const alerts = (await this.list(userId)).filter((item) => item.enabled); const results = []; for (const alert of alerts) results.push(await this.check(userId, alert.id)); return { results, checkedAt: new Date().toISOString() }; }
@@ -107,6 +129,19 @@ export class PriceAlertsService {
   }
   async removeAll(userId: string) { const alerts = await this.list(userId); const batch = this.firebase.firestore.batch(); alerts.forEach((item) => batch.delete(this.collection.doc(item.id))); await batch.commit(); return alerts.length; }
   private async findForUser(userId: string, id: string) { const snapshot = await this.collection.doc(id).get(); const alert = snapshot.data() as PriceAlert | undefined; if (!alert || alert.userId !== userId) throw new NotFoundException("Price alert not found"); return alert; }
+}
+
+export function activeAlertCount(alerts: PriceAlert[]) {
+  return alerts.filter((alert) => alert.enabled).length;
+}
+
+export function isEligibleAlertOffer(offer: NormalizedOffer) {
+  const minimumConfidence = boundedNumber("ALERT_MIN_MATCH_CONFIDENCE", 85, 1, 100);
+  return offer.matchType === "exact"
+    && offer.matchConfidence >= minimumConfidence
+    && (offer.availability === "in_stock" || offer.availability === "limited")
+    && offer.totalPrice > 0
+    && Boolean(offer.affiliateUrl || offer.productUrl);
 }
 
 function clean<T extends object>(value: T): T { return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined)) as T; }

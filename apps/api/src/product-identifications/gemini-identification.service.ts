@@ -7,6 +7,7 @@ interface GeminiProductResult {
   name?: string;
   brand?: string;
   model?: string;
+  reference?: string;
   category?: string;
   color?: string;
   visibleFeatures?: string[];
@@ -72,6 +73,7 @@ export class GeminiIdentificationService {
       '  "name": "string",',
       '  "brand": "string",',
       '  "model": "string",',
+      '  "reference": "string",',
       '  "category": "string",',
       '  "color": "string",',
       '  "visibleFeatures": ["string"],',
@@ -80,7 +82,8 @@ export class GeminiIdentificationService {
       '  "confidence": 0',
       "}",
       "Nao inventes codigos de barras. Se nao souberes, usa string vazia.",
-      "Nao inventes marcas, modelos ou nomes. Se nao houver evidencia visual/textual suficiente, usa string vazia.",
+      "A referencia e o SKU, MPN ou codigo de produto visivel, diferente do codigo de barras.",
+      "Nao inventes marcas, modelos, referencias ou nomes. Se nao houver evidencia visual/textual suficiente, usa string vazia.",
       "A confianca deve ser um inteiro de 0 a 100."
     ].join("\n");
   }
@@ -124,6 +127,7 @@ export class GeminiIdentificationService {
       name: result.name?.trim() || fallbackName,
       brand: result.brand?.trim() || undefined,
       model: result.model?.trim() || undefined,
+      reference: result.reference?.trim() || undefined,
       category: result.category?.trim() || (sourceType === "text" ? "Pesquisa textual" : undefined),
       color: result.color?.trim() || undefined,
       visibleFeatures: Array.isArray(result.visibleFeatures) && result.visibleFeatures.length > 0 ? result.visibleFeatures.slice(0, 8) : [],

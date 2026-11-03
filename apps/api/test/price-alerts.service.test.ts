@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { PriceAlertsService } from "../src/price-alerts/price-alerts.service";
+import { activeAlertCount, isEligibleAlertOffer, PriceAlertsService, type PriceAlert } from "../src/price-alerts/price-alerts.service";
 import type { SearchesService } from "../src/searches/searches.service";
 import type { FirebaseAdminService } from "../src/firebase-admin/firebase-admin.service";
 import type { NotificationsService } from "../src/notifications/notifications.service";
@@ -22,6 +22,7 @@ describe("PriceAlertsService", () => {
           availability: "in_stock",
           storeTrustScore: 90,
           matchConfidence: 95,
+          matchType: "exact",
           lastUpdatedAt: new Date().toISOString()
         }
       ] })
@@ -48,5 +49,24 @@ describe("PriceAlertsService", () => {
     expect(result.matched).toBe(true);
     expect(result.bestOffer?.totalPrice).toBe(699);
     expect((await service.list("user-a"))[0].lastMatchedAt).toBeDefined();
+  });
+
+  it("rejects similar, uncertain, and unavailable offers for notifications", () => {
+    const offer = {
+      id: "offer_1", provider: "test", storeName: "Store", title: "Product", condition: "new" as const,
+      productUrl: "https://example.com", currency: "EUR", itemPrice: 1.23, shippingPrice: 0,
+      totalPrice: 1.23, availability: "in_stock" as const, storeTrustScore: 90, matchConfidence: 95,
+      matchType: "exact" as const, lastUpdatedAt: new Date().toISOString()
+    };
+
+    expect(isEligibleAlertOffer(offer)).toBe(true);
+    expect(isEligibleAlertOffer({ ...offer, matchType: "similar" })).toBe(false);
+    expect(isEligibleAlertOffer({ ...offer, matchConfidence: 60 })).toBe(false);
+    expect(isEligibleAlertOffer({ ...offer, availability: "out_of_stock" })).toBe(false);
+  });
+
+  it("counts only enabled alerts against the Premium limit", () => {
+    const alert = { enabled: true } as PriceAlert;
+    expect(activeAlertCount([alert, { ...alert, enabled: false }])).toBe(1);
   });
 });
