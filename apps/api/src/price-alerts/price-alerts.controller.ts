@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Header, Param, Patch, Post } from "@nestjs/common";
 import { RequestUser, type RequestUser as RequestUserContext } from "../common/request-user.decorator";
 import { CreatePriceAlertDto } from "./dto/create-price-alert.dto";
 import { UpdatePriceAlertDto } from "./dto/update-price-alert.dto";
@@ -10,6 +10,7 @@ export class PriceAlertsController {
   constructor(private readonly priceAlertsService: PriceAlertsService, private readonly subscriptions: SubscriptionsService) {}
 
   @Get()
+  @Header("Cache-Control", "no-store")
   async list(@RequestUser() user: RequestUserContext) {
     return { items: await this.priceAlertsService.list(user.id) };
   }
@@ -41,6 +42,7 @@ export class PriceAlertsController {
   }
 
   @Get(":id/history")
+  @Header("Cache-Control", "no-store")
   history(@RequestUser() user: RequestUserContext, @Param("id") id: string) {
     return this.priceAlertsService.history(user.id, id);
   }
