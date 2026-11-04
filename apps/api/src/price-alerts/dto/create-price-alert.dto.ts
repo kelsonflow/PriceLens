@@ -32,4 +32,21 @@ export class CreatePriceAlertDto {
   @IsOptional()
   @IsBoolean()
   enabled?: boolean;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0.01)
+  initialPrice?: number;
+
+  @IsOptional()
+  @IsString()
+  initialStoreName?: string;
+
+  @IsOptional()
+  @IsString()
+  initialOfferId?: string;
+
+  @IsOptional()
+  @IsString()
+  initialProductUrl?: string;
 }

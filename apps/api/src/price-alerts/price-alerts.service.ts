@@ -43,7 +43,11 @@ export class PriceAlertsService {
     }
     const now = new Date().toISOString(); const ref = this.collection.doc();
     const alert: PriceAlert = { id: ref.id, userId, query: dto.query.trim(), title: dto.title?.trim() || dto.query.trim(), brand: dto.brand?.trim() || undefined, model: dto.model?.trim() || undefined, country: dto.country?.trim() || "PT", currency: dto.currency?.trim() || "EUR", targetPrice: dto.targetPrice, enabled: dto.enabled ?? true, createdAt: now, updatedAt: now };
-    await ref.set(clean(alert)); return alert;
+    await ref.set(clean(alert));
+    if (dto.initialPrice && dto.initialPrice > 0) {
+      await this.recordInitialObservation(alert, dto, now);
+    }
+    return alert;
   }
 
   async update(userId: string, id: string, dto: UpdatePriceAlertDto) {
@@ -88,6 +92,20 @@ export class PriceAlertsService {
       id, productKey, query: alert.query, title: alert.title, brand: alert.brand ?? null, model: alert.model ?? null,
       country: alert.country, currency: offer.currency, price: offer.totalPrice, storeName: offer.storeName,
       offerId: offer.id, productUrl: offer.affiliateUrl ?? offer.productUrl, observedAt
+    }, { merge: true });
+  }
+
+  private async recordInitialObservation(alert: PriceAlert, dto: CreatePriceAlertDto, observedAt: string) {
+    const productKey = searchKey(alert);
+    const interval = observedAt.slice(0, 16).replace(/\D/g, "");
+    const id = `${createHash("sha256").update(productKey).digest("hex").slice(0, 24)}_${interval}`;
+    await this.firebase.firestore.collection("priceObservations").doc(id).set({
+      id, productKey, query: alert.query, title: alert.title, brand: alert.brand ?? null, model: alert.model ?? null,
+      country: alert.country, currency: alert.currency, price: dto.initialPrice,
+      storeName: dto.initialStoreName?.trim() || "PriceLens",
+      offerId: dto.initialOfferId?.trim() || null,
+      productUrl: dto.initialProductUrl?.trim() || null,
+      observedAt
     }, { merge: true });
   }
 

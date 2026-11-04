@@ -28,7 +28,7 @@ const en = {
   light: "Light", dark: "Dark", system: "System", accountSync: "Sync favourites, history and alerts across devices.",
   loadingOffers: "Finding the best offers", wait: "This may take a few seconds.", close: "Close", back: "Back", shippingIncluded: "Shipping included", shipping: "shipping",
   permission: "Permission required", cameraPermission: "Allow camera access to analyse products.", photoPermission: "Allow photo access to choose an image.", emptySearch: "Enter a product, brand or model.", apiUnavailable: "Service unavailable. Please try again.",
-  savedNotice: "Saved to favourites.", alertNotice: "Price alert created.", purchaseUnavailable: "Subscriptions are not connected yet.",
+  savedNotice: "Saved to favourites.", favoriteRemoved: "Removed from favourites.", alertNotice: "Price alert created.", purchaseUnavailable: "Subscriptions are not connected yet.",
   subscribe: "Subscribe", retryProducts: "Reload plans", restorePurchases: "Restore purchases", activePlan: "Active", starterActive: "The Starter plan is already active.",
   purchaseError: "Purchase unavailable", purchaseSuccess: "Premium is now active on your account.", restoreSuccess: "Your Premium purchase was restored.", nothingToRestore: "No Premium purchase was found for this Google Play account.", premiumRequired: "Premium required", premiumRequiredText: "Price alerts are included in the Premium plan.", signInError: "Sign-in failed",
   usageLimit: "Monthly limit reached", guestLimit: "Your free search has been used. Sign in to continue.", starterLimit: "Your Starter allowance has been used. Upgrade to Premium or wait until next month.", premiumLimit: "Your Premium allowance has been used. It renews next month.", rateLimited: "Too many attempts in a short time. Wait a moment and try again.", networkError: "No connection to PriceLens. Check your internet connection and try again.", authenticationRequired: "Sign in again to continue.", searchFailed: "We could not complete this search. Please try again.", alertLimitTitle: "Price alert limit reached", alertLimit: "Premium includes up to 5 active price alerts. Delete an old alert to create another.", starterComparisons: "5 comparisons per month", starterImages: "2 image recognitions per month", premiumComparisons: "50 comparisons per month", premiumImages: "20 image recognitions per month", premiumAlerts: "Up to 5 price alerts"
@@ -50,6 +50,7 @@ Object.assign(pt, {
   guestLimit: "A pesquisa gratuita já foi utilizada. Inicia sessão para continuares.",
   starterLimit: "Os créditos Starter deste mês terminaram. Adere ao Premium ou aguarda pelo próximo mês.",
   premiumLimit: "Os créditos Premium deste mês terminaram. Serão renovados no próximo mês.",
+  favoriteRemoved: "Produto removido dos guardados.",
   rateLimited: "Foram feitas demasiadas tentativas seguidas. Aguarda um momento e tenta novamente.",
   networkError: "Sem ligação ao PriceLens. Verifica a Internet e tenta novamente.",
   authenticationRequired: "Inicia novamente a sessão para continuares.",
