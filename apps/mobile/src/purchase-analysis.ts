@@ -7,6 +7,7 @@ export interface PurchaseAnalysis {
   minimum: number;
   maximum: number;
   median: number;
+  average: number;
   changeFromMedian: number;
 }
 
@@ -17,11 +18,12 @@ export function analysePurchase(points: PricePoint[]): PurchaseAnalysis | null {
   const current = valid.at(-1)!.price;
   const middle = Math.floor(prices.length / 2);
   const median = prices.length % 2 ? prices[middle] : (prices[middle - 1] + prices[middle]) / 2;
+  const average = prices.reduce((sum, price) => sum + price, 0) / prices.length;
   const minimum = prices[0];
   const maximum = prices.at(-1)!;
   const changeFromMedian = median ? (current - median) / median : 0;
   const rating: PriceRating = valid.length < 2 ? "insufficient"
     : current <= minimum * 1.05 || changeFromMedian <= -0.1 ? "good"
       : changeFromMedian >= 0.1 ? "high" : "normal";
-  return { rating, current, minimum, maximum, median, changeFromMedian };
+  return { rating, current, minimum, maximum, median, average, changeFromMedian };
 }

@@ -8,4 +8,5 @@ describe("analysePurchase", () => {
   it("marks a price materially above the median as high", () => expect(analysePurchase(points([80, 82, 85, 110]))?.rating).toBe("high"));
   it("marks a price around the median as normal", () => expect(analysePurchase(points([90, 100, 110, 102]))?.rating).toBe("normal"));
   it("does not claim a deal from one observation", () => expect(analysePurchase(points([99]))?.rating).toBe("insufficient"));
+  it("calculates the arithmetic average for the summary", () => expect(analysePurchase(points([80, 100, 120]))?.average).toBe(100));
 });
