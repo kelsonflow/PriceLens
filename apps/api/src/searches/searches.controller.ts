@@ -12,6 +12,11 @@ export class SearchesController {
   async searchOffers(@RequestUser() user: RequestUserContext, @Body() dto: SearchOffersDto) {
     await this.usage.assertCountry(user, dto.country);
     const usage = await this.usage.consume(user, "comparison");
-    return { ...(await this.searchesService.searchOffers(dto)), usage };
+    try {
+      return { ...(await this.searchesService.searchOffers(dto)), usage };
+    } catch (error) {
+      await this.usage.release(user, "comparison", usage.plan);
+      throw error;
+    }
   }
 }

@@ -21,7 +21,8 @@ function fixture(premium = false) {
   const subscriptions = { isPremium: vi.fn().mockResolvedValue(premium) };
   return {
     service: new UsageService(firebase as never, subscriptions as never),
-    subscriptions
+    subscriptions,
+    documents
   };
 }
 
@@ -51,6 +52,38 @@ describe("UsageService", () => {
 
     await expect(service.consume(user, "imageRecognition")).resolves.toMatchObject({ plan: "premium", limit: 20, remaining: 19 });
     await expect(service.assertCountry(user, "US")).resolves.toBeUndefined();
+  });
+
+  it("starts a fresh allowance when a user upgrades from Starter to Premium", async () => {
+    const { service, subscriptions } = fixture(false);
+    const user = { id: "upgraded-user", authType: "firebase" as const };
+
+    for (let index = 0; index < 2; index += 1) {
+      await service.consume(user, "imageRecognition");
+    }
+    await expect(service.consume(user, "imageRecognition")).rejects.toMatchObject({ status: 429 });
+
+    subscriptions.isPremium.mockResolvedValue(true);
+
+    await expect(service.consume(user, "imageRecognition")).resolves.toMatchObject({
+      plan: "premium",
+      used: 1,
+      limit: 20,
+      remaining: 19
+    });
+  });
+
+  it("returns a reserved credit when an operation fails", async () => {
+    const { service } = fixture(true);
+    const user = { id: "premium-user", authType: "firebase" as const };
+
+    const reservation = await service.consume(user, "imageRecognition");
+    await service.release(user, "imageRecognition", reservation.plan);
+
+    await expect(service.consume(user, "imageRecognition")).resolves.toMatchObject({
+      used: 1,
+      remaining: 19
+    });
   });
 
   it("restricts international comparisons for Starter", async () => {

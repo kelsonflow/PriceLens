@@ -33,7 +33,7 @@ export class UsageService {
     const plan = await this.planFor(user);
     const limit = this.limit(plan, resource);
     const period = currentPeriod();
-    const ref = this.firebase.firestore.collection("monthlyUsage").doc(documentId(user.id, period));
+    const ref = this.firebase.firestore.collection("monthlyUsage").doc(documentId(user.id, period, plan));
 
     const used = await this.firebase.firestore.runTransaction(async (transaction) => {
       const snapshot = await transaction.get(ref);
@@ -61,7 +61,7 @@ export class UsageService {
   async summary(user: RequestUser) {
     const plan = await this.planFor(user);
     const period = currentPeriod();
-    const snapshot = await this.firebase.firestore.collection("monthlyUsage").doc(documentId(user.id, period)).get();
+    const snapshot = await this.firebase.firestore.collection("monthlyUsage").doc(documentId(user.id, period, plan)).get();
     const record = snapshot.data() as Partial<UsageRecord> | undefined;
     return {
       plan,
@@ -72,6 +72,27 @@ export class UsageService {
         return [resource, { used, limit, remaining: Math.max(0, limit - used) }];
       }))
     };
+  }
+
+  async release(user: RequestUser, resource: UsageResource, plan?: UsagePlan) {
+    const effectivePlan = plan ?? await this.planFor(user);
+    const period = currentPeriod();
+    const ref = this.firebase.firestore.collection("monthlyUsage").doc(documentId(user.id, period, effectivePlan));
+
+    await this.firebase.firestore.runTransaction(async (transaction) => {
+      const snapshot = await transaction.get(ref);
+      const record = snapshot.data() as Partial<UsageRecord> | undefined;
+      if (!record) return;
+      transaction.set(ref, {
+        userId: user.id,
+        period,
+        comparison: Number(record.comparison ?? 0),
+        textIdentification: Number(record.textIdentification ?? 0),
+        imageRecognition: Number(record.imageRecognition ?? 0),
+        [resource]: Math.max(0, Number(record[resource] ?? 0) - 1),
+        updatedAt: new Date().toISOString()
+      } satisfies UsageRecord);
+    });
   }
 
   async assertCountry(user: RequestUser, country?: string) {
@@ -123,6 +144,6 @@ function currentPeriod(date = new Date()) {
   return date.toISOString().slice(0, 7);
 }
 
-function documentId(userId: string, period: string) {
-  return `${period}_${createHash("sha256").update(userId).digest("hex")}`;
+function documentId(userId: string, period: string, plan: UsagePlan) {
+  return `${period}_${plan}_${createHash("sha256").update(userId).digest("hex")}`;
 }

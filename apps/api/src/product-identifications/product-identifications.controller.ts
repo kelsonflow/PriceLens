@@ -12,14 +12,24 @@ export class ProductIdentificationsController {
 
   @Post("text")
   async createFromText(@RequestUser() user: RequestUserContext, @Body() dto: CreateTextIdentificationDto) {
-    await this.usage.consume(user, "textIdentification");
-    return this.productIdentificationsService.createFromText(dto);
+    const usage = await this.usage.consume(user, "textIdentification");
+    try {
+      return await this.productIdentificationsService.createFromText(dto);
+    } catch (error) {
+      await this.usage.release(user, "textIdentification", usage.plan);
+      throw error;
+    }
   }
 
   @Post("image")
   async createFromImage(@RequestUser() user: RequestUserContext, @Body() dto: CreateImageIdentificationDto) {
-    await this.usage.consume(user, "imageRecognition");
-    return this.productIdentificationsService.createFromImage(dto);
+    const usage = await this.usage.consume(user, "imageRecognition");
+    try {
+      return await this.productIdentificationsService.createFromImage(dto);
+    } catch (error) {
+      await this.usage.release(user, "imageRecognition", usage.plan);
+      throw error;
+    }
   }
 
   @Patch(":id/confirm")
